@@ -1,0 +1,20 @@
+// No whitespace allowed between digits
+integer = @{ ASCII_DIGIT+ }
+
+unary_minus = { "-" }
+primary = _{ integer | "(" ~ expr ~ ")" }
+atom = _{ unary_minus? ~primary }
+
+bin_op = _{ add | subtract | multiply | divide | modulo}
+	add = { "+" }
+	subtract = { "-" }
+	multiply = { "*" }
+	divide = { "/" }
+	modulo = { "%" }
+
+expr = { atom ~ (bin_op ~ atom)* }
+
+// We can't have SOI and EOI on expr directly, because it is used recursively (e.g. with parentheses)
+equation = _{ SOI ~ expr ~ EOI }
+
+WHITESPACE = _{ " " }
