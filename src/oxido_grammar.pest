@@ -1,0 +1,149 @@
+//
+// Created by intellij-pest on 2023-03-02
+// oxido_grammar
+// Author: @chuabingquan for https://github.com/cs4215-seville/oxido-lang
+//
+
+program = {
+    SOI ~ top_level_declarations* ~ EOI
+}
+top_level_declarations = {
+    static_declaration | function_declaration
+}
+
+declaration = {
+    "let " ~ mutable_specifier? ~ identifier ~ (":" ~ datatype)? ~ ("=" ~ expr)? ~ ";"
+}
+
+static_declaration = {
+    "static" ~ mutable_specifier? ~ identifier ~ ":" ~ datatype ~ "=" ~ expr ~ ";"
+}
+
+mutable_specifier = { "mut " }
+
+datatype = { "i64" | "bool" | "str" | "String" | "()" | function_datatype | reference_datatype }
+
+reference_datatype = { "&" ~ lifetime_type_variable? ~ mutable_specifier? ~ datatype }
+
+function_datatype = {
+    "fn" ~ "(" ~ function_datatype_param_list ~ ")"
+    ~ function_return_type?
+}
+function_datatype_param_list = { datatype ~ ("," ~ datatype)* | "" }
+
+block = { "{" ~ sequence ~ expr? ~ "}" }
+
+sequence = { (stmt | block)* }
+
+stmt = { declaration | static_declaration | function_declaration | expr_stmt }
+
+expr_stmt = { expr ~ ";" }
+
+expr = { assignment }
+
+primary = { integer_literal | string_literal | boolean_literal | unit_literal | grouped_expr | block | return_val | identifier }
+
+grouped_expr = { "(" ~ expr ~ ")" }
+
+assignment = { (identifier | unary) ~ "=" ~ assignment | disjunction }
+
+disjunction = { conjunction ~ ("||" ~ conjunction)* }
+
+conjunction = { equality ~ ("&&" ~ equality)* }
+
+equality = { comparison ~ equality_helper* }
+equality_operator = { "!=" | "==" }
+equality_helper = { equality_operator ~ comparison }
+
+comparison = { term ~ comparison_helper* }
+comparison_operator = { ">=" | ">" | "<=" | "<" }
+comparison_helper = { comparison_operator ~ term }
+
+term = { factor ~ term_helper* }
+term_operator = { "-" | "+" }
+term_helper = { term_operator ~ factor }
+
+factor = { unary ~ factor_helper* }
+factor_operator = { "/" | "*" }
+factor_helper = { factor_operator ~ unary }
+
+unary = { unary_operator ~ unary | function_app }
+unary_operator = { "!" | "-" | "&mut " | "&" | "*" }
+
+function_app = { primary ~ ("(" ~ function_arg_list ~ ")")* }
+function_arg_list = { expr ~ ("," ~ expr)* | "" }
+
+return_val = { "return " ~ expr }
+
+identifier = @{
+      keyword ~ (ASCII_ALPHANUMERIC | "_")+
+    | !keyword ~ !ASCII_DIGIT ~ (ASCII_ALPHANUMERIC | "_")+
+}
+
+function_declaration = {
+      "fn " ~ identifier ~ ("<" ~ lifetime_param_list ~ ">")? ~ "(" ~ function_param_list ~ ")" ~
+      function_return_type? ~ block
+}
+
+function_return_type = { "->" ~ datatype }
+
+lifetime_param_list = { lifetime_type_variable ~ ("," ~ lifetime_type_variable)* | "" }
+lifetime_type_variable = @{ "'" ~ !ASCII_DIGIT ~ ("_" ~ (ASCII_ALPHANUMERIC | "_")+ | !"_" ~ (ASCII_ALPHANUMERIC | "_")+) }
+
+function_param_list = { function_param ~ ("," ~ function_param)* | "" }
+function_param = { identifier ~ ":" ~ datatype }
+
+keyword = _{
+    boolean_literal
+    | "as"
+    | "break"
+    | "const"
+    | "continue"
+    | "crate"
+    | "else"
+    | "enum"
+    | "extern"
+    | "fn"
+    | "for"
+    | "if"
+    | "impl"
+    | "in"
+    | "let"
+    | "loop"
+    | "match"
+    | "mod"
+    | "move"
+    | "mut"
+    | "pub"
+    | "ref"
+    | "return"
+    | "self"
+    | "Self"
+    | "static"
+    | "struct"
+    | "super"
+    | "trait"
+    | "type"
+    | "unsafe"
+    | "use"
+    | "where"
+    | "while"
+}
+
+boolean_literal = { "true" | "false" }
+
+integer_literal = { ASCII_DIGIT+ }
+
+string_literal = ${ "\"" ~ inner ~ "\"" }
+inner = @{ char* }
+char = {
+    !("\"" | "\\") ~ ANY
+    | "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t")
+    | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
+
+unit_literal = { "(" ~ ")" }
+
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+
+COMMENT = _{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" | "//" ~ (!NEWLINE ~ ANY)* }

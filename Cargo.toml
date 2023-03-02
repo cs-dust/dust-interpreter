@@ -8,4 +8,6 @@ edition = "2021"
 [dependencies]
 pest = "2.4.0"
 pest_derive = "2.4.0"
+pest_consume = "1.1.1"
 lazy_static = "1.4.0"
+walkdir = "2"
