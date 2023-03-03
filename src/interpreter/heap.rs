@@ -17,13 +17,13 @@ impl Heap {
             free_pointer: 0
         }
     }
-    pub fn heap_allocate(&self, size:usize) -> u64 {
+    pub fn allocate(&self, size:usize) -> u64 {
         return 0;
     }
-    pub fn heap_get(&self, address:usize) -> u64 {
+    pub fn get(&self, address:usize) -> u64 {
         return 0;
     }
-    pub fn heap_free(&self, address:usize) -> () {
+    pub fn free(&self, address:usize) -> () {
 
     }
 }
