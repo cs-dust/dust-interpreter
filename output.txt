@@ -1,0 +1,173 @@
+Parsing...
+
+[
+    FuncDeclaration {
+        name: IdentifierExpr(
+            "main",
+            SourceLocation {
+                line: 1,
+                col: 4,
+            },
+        ),
+        lifetime_parameters: [],
+        parameters: [],
+        return_type: Unit,
+        body: Block {
+            statements: [
+                Stmt(
+                    LetStmt {
+                        name: IdentifierExpr(
+                            "y",
+                            SourceLocation {
+                                line: 2,
+                                col: 9,
+                            },
+                        ),
+                        is_mutable: false,
+                        annotation: None,
+                        value: Some(
+                            BlockExpr(
+                                Block {
+                                    statements: [
+                                        Stmt(
+                                            LetStmt {
+                                                name: IdentifierExpr(
+                                                    "x",
+                                                    SourceLocation {
+                                                        line: 3,
+                                                        col: 13,
+                                                    },
+                                                ),
+                                                is_mutable: false,
+                                                annotation: None,
+                                                value: Some(
+                                                    LiteralExpr(
+                                                        IntLiteral(
+                                                            3,
+                                                        ),
+                                                        SourceLocation {
+                                                            line: 3,
+                                                            col: 17,
+                                                        },
+                                                    ),
+                                                ),
+                                                position: SourceLocation {
+                                                    line: 3,
+                                                    col: 9,
+                                                },
+                                            },
+                                        ),
+                                        Stmt(
+                                            ExprStmt(
+                                                ReturnExpr(
+                                                    PrimitiveOperationExpr(
+                                                        BinaryOperation {
+                                                            operator: Plus,
+                                                            first_operand: IdentifierExpr(
+                                                                "x",
+                                                                SourceLocation {
+                                                                    line: 4,
+                                                                    col: 9,
+                                                                },
+                                                            ),
+                                                            second_operand: LiteralExpr(
+                                                                IntLiteral(
+                                                                    1,
+                                                                ),
+                                                                SourceLocation {
+                                                                    line: 4,
+                                                                    col: 13,
+                                                                },
+                                                            ),
+                                                        },
+                                                        SourceLocation {
+                                                            line: 4,
+                                                            col: 9,
+                                                        },
+                                                    ),
+                                                    SourceLocation {
+                                                        line: 4,
+                                                        col: 9,
+                                                    },
+                                                ),
+                                            ),
+                                        ),
+                                    ],
+                                },
+                                SourceLocation {
+                                    line: 2,
+                                    col: 13,
+                                },
+                            ),
+                        ),
+                        position: SourceLocation {
+                            line: 2,
+                            col: 5,
+                        },
+                    },
+                ),
+                Stmt(
+                    ExprStmt(
+                        ApplicationExpr {
+                            is_primitive: Some(
+                                VariadicOperator(
+                                    Println,
+                                ),
+                            ),
+                            callee: IdentifierExpr(
+                                "println",
+                                SourceLocation {
+                                    line: 7,
+                                    col: 5,
+                                },
+                            ),
+                            arguments: [
+                                LiteralExpr(
+                                    StringLiteral(
+                                        "The value of y is: {}",
+                                    ),
+                                    SourceLocation {
+                                        line: 7,
+                                        col: 13,
+                                    },
+                                ),
+                                IdentifierExpr(
+                                    "y",
+                                    SourceLocation {
+                                        line: 7,
+                                        col: 38,
+                                    },
+                                ),
+                            ],
+                            position: SourceLocation {
+                                line: 7,
+                                col: 5,
+                            },
+                        },
+                    ),
+                ),
+                Stmt(
+                    ExprStmt(
+                        ReturnExpr(
+                            LiteralExpr(
+                                UnitLiteral,
+                                SourceLocation {
+                                    line: 0,
+                                    col: 0,
+                                },
+                            ),
+                            SourceLocation {
+                                line: 0,
+                                col: 0,
+                            },
+                        ),
+                    ),
+                ),
+            ],
+        },
+        position: SourceLocation {
+            line: 1,
+            col: 1,
+        },
+    },
+]

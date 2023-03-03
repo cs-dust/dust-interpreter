@@ -1,4 +1,5 @@
 mod parser;
+mod interpreter;
 
 use std::fs;
 use std::process;
@@ -12,4 +13,5 @@ fn main() {
         process::exit(0);
     }
     println!("{:#?}", ast);
+    interpreter::run(&ast);
 }
