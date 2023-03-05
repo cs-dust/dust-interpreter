@@ -1,8 +1,9 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::interpreter::heap::Heap;
+// use crate::interpreter::heap::Heap;
 use crate::parser;
-use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt, Block, Literal};
+use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt, Block, Literal, UnaryOperator, BinaryOperator, VariadicOperator, PrimitiveOperator};
 
 mod heap;
 
@@ -37,7 +38,7 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
     let mut curr_stmt_option: Option<Stmt> = ast.pop();
 
     // While we have a statement to evaluate
-    while (curr_stmt_option.is_some()) {
+    while curr_stmt_option.is_some() {
         let curr: Stmt = curr_stmt_option.expect("How is this even possible bruh"); // current statement
         // add a static or a function to the above lists as necessary.
         // any other type of statement is not allowed in the top level.
@@ -96,9 +97,9 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
     let mut S: Vec<DataType> = Vec::new(); // TODO: Environments
     // We start with main
     A.push(functions.list[main_idx].clone());
-    while (!A.is_empty()) {
+    while !A.is_empty() {
         let curr: Stmt = A.pop().expect("Literally impossible but ok");
-        curr.evaluate(&mut A, &mut S, &); // Borrowing w/ Mutable Reference
+        curr.evaluate(&mut A, &mut S); // Borrowing w/ Mutable Reference
     }
 }
 
@@ -146,20 +147,169 @@ impl Evaluate for SequenceStmt {
 
 impl Evaluate for Block {
     fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<DataType>) {
-        //todo!()
+        for stmt in &self.statements {
+            stmt.evaluate(instr_stack, stash);
+        }
     }
 }
 
+// todo:
 impl Evaluate for PrimitiveOperation {
     fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<DataType>) {
-        //todo!()
+        match self {
+            PrimitiveOperation::UnaryOperation { operator, operand } => {
+                operand.evaluate(instr_stack, stash);
+                // operator.evaluate(stash);
+            },
+            PrimitiveOperation::BinaryOperation { operator, first_operand, second_operand } => {
+                first_operand.evaluate(instr_stack, stash);
+                second_operand.evaluate(instr_stack, stash);
+                // operator.evaluate(stash);
+            },
+            PrimitiveOperation::VariadicOperation { operator, operands } => {
+                for operand in operands {
+                    operand.evaluate(instr_stack, stash);
+                }
+            },
+        }
+    }
+}
+
+impl Evaluate for PrimitiveOperator {
+    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<DataType>) {
+        match self {
+            PrimitiveOperator::Unary(operator) => operator.evaluate(instr_stack, stash),
+            PrimitiveOperator::Binary(operator) => operator.evaluate(instr_stack, stash),
+            PrimitiveOperator::VariadicOperator(operator) => operator.evaluate(instr_stack, stash),
+        }
+    }
+}
+
+
+impl Evaluate for UnaryOperator {
+    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<DataType>) {
+        match self {
+            UnaryOperator::Not => {
+                let operand = stash.pop().expect("Invalid type for unary not operator");
+                //todo!
+            },
+            UnaryOperator::UnaryMinus => {
+                let operand = stash.pop().expect("Invalid type for unary minus operator");
+                //todo!
+            },
+            UnaryOperator::ImmutableBorrow => {
+                //todo!
+            },
+            UnaryOperator::MutableBorrow => {
+                //todo!
+            },
+            UnaryOperator::Dereference => {
+                //todo!
+            },
+            UnaryOperator::StringFrom => {
+                //todo!
+            },
+            UnaryOperator::Drop => {
+                let _ = stash.pop();
+            },
+            UnaryOperator::Len => {
+                //todo!
+            },
+            UnaryOperator::AsStr => {
+                //todo!
+            },
+            UnaryOperator::PushStr => {
+                //todo!
+            },
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl Evaluate for BinaryOperator {
+    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<DataType>) {
+        match self {
+            BinaryOperator::Plus => {
+                let num_b = stash.pop().expect("Operand should be a number");
+                let num_a = stash.pop().expect("Operand should be a number");
+                //todo!
+            },
+            BinaryOperator::Minus => {
+                let num_b = stash.pop().expect("Operand should be a number");
+                let num_a = stash.pop().expect("Operand should be a number");
+                //todo!
+            },
+            BinaryOperator::Times => {
+                let num_b = stash.pop().expect("Operand should be a number");
+                let num_a = stash.pop().expect("Operand should be a number");
+                //todo!
+            },
+            BinaryOperator::Divide => {
+                let num_b = stash.pop().expect("Operand should be a number");
+                let num_a = stash.pop().expect("Operand should be a number");
+                //todo!
+            },
+            BinaryOperator::Equal => {
+                let num_b = stash.pop().expect("Operand should be a number");
+                let num_a = stash.pop().expect("Operand should be a number");
+                //todo!
+            },
+            BinaryOperator::NotEqual => {
+                let num_b = stash.pop().expect("Operand should be a number");
+                let num_a = stash.pop().expect("Operand should be a number");
+                //todo!
+            },
+            BinaryOperator::Greater => {
+                let num_b = stash.pop().expect("Operand should be a number");
+                let num_a = stash.pop().expect("Operand should be a number");
+                //todo!
+            },
+            BinaryOperator::GreaterOrEqual => {
+                let num_b = stash.pop().expect("Operand should be a number");
+                let num_a = stash.pop().expect("Operand should be a number");
+                //todo!
+            },
+            BinaryOperator::Less => {
+                let num_b = stash.pop().expect("Operand should be a number");
+                let num_a = stash.pop().expect("Operand should be a number");
+                //todo!
+            },
+            BinaryOperator::LessOrEqual => {
+                let num_b = stash.pop().expect("Operand should be a number");
+                let num_a = stash.pop().expect("Operand should be a number");
+                //todo!
+            },
+            BinaryOperator::And => {
+                let num_b = stash.pop().expect("Operand should be a number");
+                let num_a = stash.pop().expect("Operand should be a number");
+                //todo!
+            },
+            BinaryOperator::Or => {
+                let num_b = stash.pop().expect("Operand should be a number");
+                let num_a = stash.pop().expect("Operand should be a number");
+                //todo!
+            },
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl Evaluate for VariadicOperator {
+    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<DataType>) {
+        match self {
+            //todo!
+            _ => unimplemented!(),
+        }
     }
 }
 
 impl Evaluate for Literal {
     fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<DataType>) {
-        //todo!()
+        match self {
+            Literal::IntLiteral(n) => stash.push(DataType::Int64),
+            Literal::BoolLiteral(b) => stash.push(DataType::Bool),
+            Literal::StringLiteral(s) => stash.push(DataType::String),
+            Literal::UnitLiteral => stash.push(DataType::Unit),
+        }
     }
 }
-
-
