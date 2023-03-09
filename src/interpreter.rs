@@ -4,6 +4,7 @@ use std::collections::HashMap;
 // use crate::interpreter::heap::Heap;
 use crate::parser;
 use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt, Block, Literal, UnaryOperator, BinaryOperator, VariadicOperator, PrimitiveOperator};
+use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UnitLiteral};
 
 mod heap;
 
@@ -11,6 +12,20 @@ struct TopLevelMap {
     map: HashMap<String, usize>,
     list: Vec<Stmt>,
     idx: usize
+}
+
+pub enum Instructions {
+    Reset,
+    Assignment,
+    UnOp,
+    BinOp,
+    Pop,
+    App,
+    Branch,
+    Env,
+    ArrLit,
+    ArrAcc,
+    ArrAssignment
 }
 
 pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
@@ -94,7 +109,7 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
     // A is our stack of instructions as in the Source EC evaluator
     let mut A: Vec<Stmt> = Vec::new();
     // S is the stash of evaluated values
-    let mut S: Vec<DataType> = Vec::new(); // TODO: Environments
+    let mut S: Vec<Literal> = Vec::new(); // TODO: Environments
     // We start with main
     A.push(functions.list[main_idx].clone());
     while !A.is_empty() {
@@ -104,11 +119,11 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
 }
 
 pub trait Evaluate {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<DataType>);
+    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>);
 }
 
 impl Evaluate for Stmt {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<DataType>) {
+    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
         match self {
             Stmt::LetStmt { name, is_mutable, annotation, value, position } => {}
             Stmt::StaticStmt { name, is_mutable, annotation, value, position } => {}
@@ -120,7 +135,7 @@ impl Evaluate for Stmt {
 
 
 impl Evaluate for Expr {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<DataType>) {
+    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
         match self {
             Expr::IdentifierExpr(name, source_location) => {
                 // Find the identifier in the environment
@@ -137,7 +152,7 @@ impl Evaluate for Expr {
 }
 
 impl Evaluate for SequenceStmt {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<DataType>) {
+    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
         match self {
             SequenceStmt::Stmt(stmt) => stmt.evaluate(instr_stack, stash),
             SequenceStmt::Block(block) => block.evaluate(instr_stack, stash),
@@ -146,7 +161,7 @@ impl Evaluate for SequenceStmt {
 }
 
 impl Evaluate for Block {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<DataType>) {
+    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
         for stmt in &self.statements {
             stmt.evaluate(instr_stack, stash);
         }
@@ -155,7 +170,7 @@ impl Evaluate for Block {
 
 // todo:
 impl Evaluate for PrimitiveOperation {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<DataType>) {
+    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
         match self {
             PrimitiveOperation::UnaryOperation { operator, operand } => {
                 operand.evaluate(instr_stack, stash);
@@ -176,7 +191,7 @@ impl Evaluate for PrimitiveOperation {
 }
 
 impl Evaluate for PrimitiveOperator {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<DataType>) {
+    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
         match self {
             PrimitiveOperator::Unary(operator) => operator.evaluate(instr_stack, stash),
             PrimitiveOperator::Binary(operator) => operator.evaluate(instr_stack, stash),
@@ -187,7 +202,7 @@ impl Evaluate for PrimitiveOperator {
 
 
 impl Evaluate for UnaryOperator {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<DataType>) {
+    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
         match self {
             UnaryOperator::Not => {
                 let operand = stash.pop().expect("Invalid type for unary not operator");
@@ -227,7 +242,7 @@ impl Evaluate for UnaryOperator {
 }
 
 impl Evaluate for BinaryOperator {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<DataType>) {
+    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
         match self {
             BinaryOperator::Plus => {
                 let num_b = stash.pop().expect("Operand should be a number");
@@ -295,7 +310,7 @@ impl Evaluate for BinaryOperator {
 }
 
 impl Evaluate for VariadicOperator {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<DataType>) {
+    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
         match self {
             //todo!
             _ => unimplemented!(),
@@ -304,12 +319,12 @@ impl Evaluate for VariadicOperator {
 }
 
 impl Evaluate for Literal {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<DataType>) {
+    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
         match self {
-            Literal::IntLiteral(n) => stash.push(DataType::Int64),
-            Literal::BoolLiteral(b) => stash.push(DataType::Bool),
-            Literal::StringLiteral(s) => stash.push(DataType::String),
-            Literal::UnitLiteral => stash.push(DataType::Unit),
+            Literal::IntLiteral(n) => stash.push(IntLiteral(*n)), // Need to  extract the literal when using it
+            Literal::BoolLiteral(b) => stash.push(BoolLiteral(*bool)),
+            Literal::StringLiteral(s) => { }, // Heap
+            Literal::UnitLiteral => {}, // Heap
         }
     }
 }
