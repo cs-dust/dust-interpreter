@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use crate::interpreter::Instructions::UnOp;
 
 // use crate::interpreter::heap::Heap;
 use crate::parser;
@@ -14,6 +15,10 @@ struct TopLevelMap {
     idx: usize
 }
 
+struct UnOp {
+    sym: char
+}
+
 pub enum Instructions {
     Reset,
     Assignment,
@@ -26,6 +31,13 @@ pub enum Instructions {
     ArrLit,
     ArrAcc,
     ArrAssignment
+}
+
+pub enum AgendaInstrs {
+    Instructions,
+    Stmt,
+    Block,
+    SequenceStmt
 }
 
 pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
@@ -205,7 +217,8 @@ impl Evaluate for UnaryOperator {
     fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
         match self {
             UnaryOperator::Not => {
-                let operand = stash.pop().expect("Invalid type for unary not operator");
+                let instr = UnOp{sym: '!'};
+
                 //todo!
             },
             UnaryOperator::UnaryMinus => {
