@@ -1,7 +1,6 @@
+use core::panicking::panic;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use crate::interpreter::Instructions::UnOp;
-
 // use crate::interpreter::heap::Heap;
 use crate::parser;
 use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt, Block, Literal, UnaryOperator, BinaryOperator, VariadicOperator, PrimitiveOperator};
@@ -16,7 +15,11 @@ struct TopLevelMap {
 }
 
 struct UnOp {
-    sym: char
+    sym: UnaryOperator
+}
+
+struct BinOp {
+    sym: BinaryOperator
 }
 
 pub enum Instructions {
@@ -40,6 +43,9 @@ pub enum AgendaInstrs {
     SequenceStmt
 }
 
+/***************************************************************************************************
+* Run the code
+***************************************************************************************************/
 pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
     // To be used later, commented to suppress warnings
     // The heap for the program being run by our interpreter
@@ -129,7 +135,91 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
         curr.evaluate(&mut A, &mut S); // Borrowing w/ Mutable Reference
     }
 }
+/***************************************************************************************************
+* Operators
+***************************************************************************************************/
+pub fn binop_microcode_num(x: i64, y: i64, sym: BinaryOperator) -> IntLiteral {
+    let output =  match sym {
+        BinaryOperator::Plus => x + y,
+        BinaryOperator::Minus => x - y,
+        BinaryOperator::Times => x * y,
+        BinaryOperator::Divide => x / y,
+        _ => panic!("fn. binop_microcode_num operation unsupported!")
+    };
+    return IntLiteral(output);
+}
 
+pub fn binop_microcode_num_bool(x: i64, y: i64, sym: BinaryOperator) -> BoolLiteral {
+    let output = match sym {
+        BinaryOperator::Equal => x == y,
+        BinaryOperator::NotEqual => x != y,
+        BinaryOperator::Greater => x > y,
+        BinaryOperator::GreaterOrEqual => x >= y,
+        BinaryOperator::Less => x < y,
+        BinaryOperator::LessOrEqual => x <= y,
+        _ => panic!("fn. binop_microcode_num_bool operation unsupported!")
+    };
+    return BoolLiteral(output);
+}
+
+pub fn binop_microcode_bool(x: bool, y: bool, sym: BinaryOperator) -> BoolLiteral {
+    let output =  match sym {
+        BinaryOperator::And => x && y,
+        BinaryOperator::Or => x || y,
+        _ => panic!("fn. binop_microcode_bool operation unsupported!")
+    };
+    return BoolLiteral(output);
+}
+
+// Need to check if both x and y have matching types - TODO! Important
+pub fn apply_binop(x: Literal, y: Literal, sym: BinaryOperator) -> Literal {
+    let x_value = match x {
+        Literal::IntLiteral(value) => *value,
+        Literal::BoolLiteral(value) => *value,
+        _ => panic!("fn. apply_binop unsupported type for x!")
+    };
+    let y_value = match y {
+        Literal::IntLiteral(value) => *value,
+        Literal::BoolLiteral(value) => *value,
+        _ => panic!("fn. apply_binop unsupported type for y!")
+    };
+    let output = match sym {
+        BinaryOperator::Plus|BinaryOperator::Minus|BinaryOperator::Divide|BinaryOperator::Times => binop_microcode_num(x_value, y_value, sym),
+        BinaryOperator::Equal|BinaryOperator::NotEqual|BinaryOperator::Greater|BinaryOperator::GreaterOrEqual|BinaryOperator::Less|BinaryOperator::LessOrEqual => binop_microcode_num_bool(x_value, y_value, sym),
+        BinaryOperator::And|BinaryOperator::Or => binop_microcode_bool(x_value, y_value, sym),
+        _ => panic!("fn. apply_binop unsupported type for sym!")
+    };
+    return output;
+}
+
+pub fn unop_microcode_bool(x: bool, sym: UnaryOperator) -> BoolLiteral {
+    let output = match sym {
+        UnaryOperator::Not => !x,
+        _=> panic!("fn. unop_microcode_bool unsupported operator!")
+    };
+    return BoolLiteral(output);
+}
+
+pub fn unop_microcode_num(x: i64, sym: UnaryOperator) -> IntLiteral {
+    let output = match sym {
+        UnaryOperator::UnaryMinus => -x,
+        _=> panic!("fn. unop_microcode_num unsupported operator!")
+    };
+    return IntLiteral(output);
+}
+
+pub fn apply_unop(x: Literal, sym: UnaryOperator) -> Literal {
+    let output = match x {
+        Literal::IntLiteral(value) => unop_microcode_num(*value, sym),
+        Literal::BoolLiteral(value) => unop_microcode_bool(*value, sym),
+        _ => panic!("fn. apply_binop unsupported type for x!")
+    };
+    return output;
+}
+
+/***************************************************************************************************
+* Evaluation
+***************************************************************************************************/
 pub trait Evaluate {
     fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>);
 }
@@ -336,7 +426,7 @@ impl Evaluate for Literal {
         match self {
             Literal::IntLiteral(n) => stash.push(IntLiteral(*n)), // Need to  extract the literal when using it
             Literal::BoolLiteral(b) => stash.push(BoolLiteral(*bool)),
-            Literal::StringLiteral(s) => { }, // Heap
+            Literal::StringLiteral(s) => {}, // Heap
             Literal::UnitLiteral => {}, // Heap
         }
     }
