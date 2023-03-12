@@ -1,5 +1,6 @@
 use core::panicking::panic;
-use std::cell::RefCell;
+// use std::panic::panic_any;
+// use std::cell::RefCell;
 use std::collections::HashMap;
 // use crate::interpreter::heap::Heap;
 use crate::parser;
@@ -138,7 +139,7 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
 /***************************************************************************************************
 * Operators
 ***************************************************************************************************/
-pub fn binop_microcode_num(x: i64, y: i64, sym: BinaryOperator) -> IntLiteral {
+pub fn binop_microcode_num(x: i64, y: i64, sym: BinaryOperator) -> crate::interpreter::Literal {
     let output =  match sym {
         BinaryOperator::Plus => x + y,
         BinaryOperator::Minus => x - y,
@@ -149,7 +150,7 @@ pub fn binop_microcode_num(x: i64, y: i64, sym: BinaryOperator) -> IntLiteral {
     return IntLiteral(output);
 }
 
-pub fn binop_microcode_num_bool(x: i64, y: i64, sym: BinaryOperator) -> BoolLiteral {
+pub fn binop_microcode_num_bool(x: i64, y: i64, sym: BinaryOperator) -> crate::interpreter::Literal {
     let output = match sym {
         BinaryOperator::Equal => x == y,
         BinaryOperator::NotEqual => x != y,
@@ -162,7 +163,7 @@ pub fn binop_microcode_num_bool(x: i64, y: i64, sym: BinaryOperator) -> BoolLite
     return BoolLiteral(output);
 }
 
-pub fn binop_microcode_bool(x: bool, y: bool, sym: BinaryOperator) -> BoolLiteral {
+pub fn binop_microcode_bool(x: bool, y: bool, sym: BinaryOperator) -> crate::interpreter::Literal {
     let output =  match sym {
         BinaryOperator::And => x && y,
         BinaryOperator::Or => x || y,
@@ -192,7 +193,7 @@ pub fn apply_binop(x: Literal, y: Literal, sym: BinaryOperator) -> Literal {
     return output;
 }
 
-pub fn unop_microcode_bool(x: bool, sym: UnaryOperator) -> BoolLiteral {
+pub fn unop_microcode_bool(x: bool, sym: UnaryOperator) -> crate::interpreter::Literal {
     let output = match sym {
         UnaryOperator::Not => !x,
         _=> panic!("fn. unop_microcode_bool unsupported operator!")
@@ -200,7 +201,7 @@ pub fn unop_microcode_bool(x: bool, sym: UnaryOperator) -> BoolLiteral {
     return BoolLiteral(output);
 }
 
-pub fn unop_microcode_num(x: i64, sym: UnaryOperator) -> IntLiteral {
+pub fn unop_microcode_num(x: i64, sym: UnaryOperator) -> crate::interpreter::Literal {
     let output = match sym {
         UnaryOperator::UnaryMinus => -x,
         _=> panic!("fn. unop_microcode_num unsupported operator!")
@@ -270,34 +271,24 @@ impl Evaluate for Block {
     }
 }
 
-// todo:
-impl Evaluate for PrimitiveOperation {
+impl Evaluate for PrimitiveOperationExpr{
     fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
         match self {
             PrimitiveOperation::UnaryOperation { operator, operand } => {
                 operand.evaluate(instr_stack, stash);
-                // operator.evaluate(stash);
+                operator.evaluate(instr_stack, stash);
             },
             PrimitiveOperation::BinaryOperation { operator, first_operand, second_operand } => {
                 first_operand.evaluate(instr_stack, stash);
                 second_operand.evaluate(instr_stack, stash);
-                // operator.evaluate(stash);
+                operator.evaluate(instr_stack, stash);
             },
             PrimitiveOperation::VariadicOperation { operator, operands } => {
                 for operand in operands {
                     operand.evaluate(instr_stack, stash);
                 }
+                operator.evaluate(instr_stack, stash);
             },
-        }
-    }
-}
-
-impl Evaluate for PrimitiveOperator {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
-        match self {
-            PrimitiveOperator::Unary(operator) => operator.evaluate(instr_stack, stash),
-            PrimitiveOperator::Binary(operator) => operator.evaluate(instr_stack, stash),
-            PrimitiveOperator::VariadicOperator(operator) => operator.evaluate(instr_stack, stash),
         }
     }
 }
@@ -305,110 +296,30 @@ impl Evaluate for PrimitiveOperator {
 
 impl Evaluate for UnaryOperator {
     fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
-        match self {
-            UnaryOperator::Not => {
-                let instr = UnOp{sym: '!'};
-
-                //todo!
-            },
-            UnaryOperator::UnaryMinus => {
-                let operand = stash.pop().expect("Invalid type for unary minus operator");
-                //todo!
-            },
-            UnaryOperator::ImmutableBorrow => {
-                //todo!
-            },
-            UnaryOperator::MutableBorrow => {
-                //todo!
-            },
-            UnaryOperator::Dereference => {
-                //todo!
-            },
-            UnaryOperator::StringFrom => {
-                //todo!
-            },
-            UnaryOperator::Drop => {
-                let _ = stash.pop();
-            },
-            UnaryOperator::Len => {
-                //todo!
-            },
-            UnaryOperator::AsStr => {
-                //todo!
-            },
-            UnaryOperator::PushStr => {
-                //todo!
-            },
-            _ => unimplemented!(),
-        }
+        let operand = stash.pop().expect("Not enough operands on stack");
+        let result = match operand {
+            IntLiteral(x) => unop_microcode_num(x, *self),
+            BoolLiteral(value) => unop_microcode_bool(value, *self),
+            _ => panic!("UnaryOperator: Unsupported unary operations"),
+        };
+        stash.push(result);
     }
 }
 
 impl Evaluate for BinaryOperator {
     fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
-        match self {
-            BinaryOperator::Plus => {
-                let num_b = stash.pop().expect("Operand should be a number");
-                let num_a = stash.pop().expect("Operand should be a number");
-                //todo!
-            },
-            BinaryOperator::Minus => {
-                let num_b = stash.pop().expect("Operand should be a number");
-                let num_a = stash.pop().expect("Operand should be a number");
-                //todo!
-            },
-            BinaryOperator::Times => {
-                let num_b = stash.pop().expect("Operand should be a number");
-                let num_a = stash.pop().expect("Operand should be a number");
-                //todo!
-            },
-            BinaryOperator::Divide => {
-                let num_b = stash.pop().expect("Operand should be a number");
-                let num_a = stash.pop().expect("Operand should be a number");
-                //todo!
-            },
-            BinaryOperator::Equal => {
-                let num_b = stash.pop().expect("Operand should be a number");
-                let num_a = stash.pop().expect("Operand should be a number");
-                //todo!
-            },
-            BinaryOperator::NotEqual => {
-                let num_b = stash.pop().expect("Operand should be a number");
-                let num_a = stash.pop().expect("Operand should be a number");
-                //todo!
-            },
-            BinaryOperator::Greater => {
-                let num_b = stash.pop().expect("Operand should be a number");
-                let num_a = stash.pop().expect("Operand should be a number");
-                //todo!
-            },
-            BinaryOperator::GreaterOrEqual => {
-                let num_b = stash.pop().expect("Operand should be a number");
-                let num_a = stash.pop().expect("Operand should be a number");
-                //todo!
-            },
-            BinaryOperator::Less => {
-                let num_b = stash.pop().expect("Operand should be a number");
-                let num_a = stash.pop().expect("Operand should be a number");
-                //todo!
-            },
-            BinaryOperator::LessOrEqual => {
-                let num_b = stash.pop().expect("Operand should be a number");
-                let num_a = stash.pop().expect("Operand should be a number");
-                //todo!
-            },
-            BinaryOperator::And => {
-                let num_b = stash.pop().expect("Operand should be a number");
-                let num_a = stash.pop().expect("Operand should be a number");
-                //todo!
-            },
-            BinaryOperator::Or => {
-                let num_b = stash.pop().expect("Operand should be a number");
-                let num_a = stash.pop().expect("Operand should be a number");
-                //todo!
-            },
-            _ => unimplemented!(),
-        }
+        let rhs = stash.pop().expect("Not enough operands on stack");
+        let lhs = stash.pop().expect("Not enough operands on stack");
+        let result = match (lhs, rhs) {
+            (IntLiteral(x), IntLiteral(y)) => {
+                binop_microcode_num(x, y, *self)
+            }
+            (BoolLiteral(x), BoolLiteral(y)) => {
+                binop_microcode_bool(x, y, *self)
+            }
+            _ => panic!("BinaryOperator: Unsupported binary operation"),
+        };
+        stash.push(result);
     }
 }
 
@@ -425,7 +336,7 @@ impl Evaluate for Literal {
     fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
         match self {
             Literal::IntLiteral(n) => stash.push(IntLiteral(*n)), // Need to  extract the literal when using it
-            Literal::BoolLiteral(b) => stash.push(BoolLiteral(*bool)),
+            Literal::BoolLiteral(b) => stash.push(BoolLiteral(*b)),
             Literal::StringLiteral(s) => {}, // Heap
             Literal::UnitLiteral => {}, // Heap
         }
