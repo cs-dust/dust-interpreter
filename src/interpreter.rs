@@ -7,6 +7,7 @@ use crate::parser;
 use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt, Block, Literal, UnaryOperator, BinaryOperator, VariadicOperator, PrimitiveOperator};
 use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UnitLiteral};
 use std::ops::Deref;
+use std::process::id;
 
 mod heap;
 
@@ -222,31 +223,63 @@ pub fn apply_unop(x: Literal, sym: UnaryOperator) -> Literal {
 }
 
 /***************************************************************************************************
-* Blocks
+* Get the identifier name
 ***************************************************************************************************/
-fn scan_declaration_names_from_block(block: &Block) -> Vec<String> { // Fix
-    let stmts_in_block: Vec<Stmt> = block.statements
-        .iter()
-        .fold(vec![], |mut stmts, seq_stmt| match seq_stmt {
-            SequenceStmt::Stmt(stmt) => {
-                stmts.push(stmt.clone());
-                stmts
-            },
-            _ => stmts,
-        });
+fn get_name(expr: &Expr) -> String {
+    match expr {
+        Expr::IdentifierExpr(name, sourcelocation) => name.clone(),
+        _ => panic!("fn. get_name could not find identifier to get name from")
+    }
+}
 
-    scan_declaration_names(&stmts_in_block)
+/***************************************************************************************************
+* Scan out declarations: Adapted from oxido-lang and ec-evaluator
+***************************************************************************************************/
+fn scan_out_declarations(stmts: &Vec<Stmt>) -> Vec<String> {
+    let scanned_stmt = |stmt: &Stmt| match stmt {
+        Stmt::LetStmt { name, .. } | Stmt::FuncDeclaration { name, .. } => {
+            let identifier = get_name(name);
+            vec![identifier]
+        }
+        _ => vec![]
+    };
+
+    stmts.iter()
+        .map(scanned_stmt)
+        .fold(vec![], |accumulator, element| { // fold is used to convert a collection of items into a single set
+            let mut identifiers = accumulator;
+            identifiers.extend(element);
+            identifiers
+        })
+}
+/***************************************************************************************************
+* Blocks
+* Adapted from oxido-lang https://github.com/cs4215-seville/oxido-lang/blob/main/src/compiler.rs
+***************************************************************************************************/
+fn scan_out_block_declarations(block: &Block) -> Vec<String> {
+    let block_stmts: Vec<Stmt> = block.statements
+        .iter()
+        .fold(vec![], |mut accumulate_stmts, seq_stmt| {
+            match seq_stmt {
+                SequenceStmt::Stmt(stmt) => {
+                    accumulate_stmts.push(stmt.clone());
+                    accumulate_stmts
+                },
+                _ => accumulate_stmts
+            }
+        });
+    scan_out_declarations(&block_stmts)
 }
 
 /***************************************************************************************************
 * Evaluation
 ***************************************************************************************************/
 pub trait Evaluate {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>);
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>);
 }
 
 impl Evaluate for Stmt {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
         match self {
             Stmt::LetStmt { name, is_mutable, annotation, value, position } => {}
             Stmt::StaticStmt { name, is_mutable, annotation, value, position } => {}
@@ -258,7 +291,7 @@ impl Evaluate for Stmt {
 
 
 impl Evaluate for Expr {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
         match self {
             Expr::IdentifierExpr(name, source_location) => {
                 // Find the identifier in the environment
@@ -280,7 +313,7 @@ impl Evaluate for Expr {
 }
 
 impl Evaluate for SequenceStmt {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
         match self {
             SequenceStmt::Stmt(stmt) => stmt.evaluate(instr_stack, stash),
             SequenceStmt::Block(block) => block.evaluate(instr_stack, stash),
@@ -289,16 +322,25 @@ impl Evaluate for SequenceStmt {
 }
 
 impl Evaluate for Block {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
-        let locals =
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
+        let locals = scan_out_block_declarations(self);
+        // TODO: Locals into the environment, as unassigned
+        // TODO: Push environment onto agenda
+
+        // TODO: Push each statement onto the agenda (reverse order),similar to handle_sequence in ec-evaluator
+        let instrs = vec![];
+        let first = true;
+        if (&self.statements.len() == 0) {
+            instr_stack.push()
+        }
         for stmt in &self.statements {
-            stmt.evaluate(instr_stack, stash);
+
         }
     }
 }
 
 impl Evaluate for PrimitiveOperation{
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
         match self {
             PrimitiveOperation::UnaryOperation { operator, operand } => {
                 operand.evaluate(instr_stack, stash);
@@ -321,7 +363,7 @@ impl Evaluate for PrimitiveOperation{
 
 
 impl Evaluate for UnaryOperator {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
         let operand = stash.pop().expect("Not enough operands on stack");
         let result = match operand {
             IntLiteral(x) => unop_microcode_num(x, *self),
@@ -333,7 +375,7 @@ impl Evaluate for UnaryOperator {
 }
 
 impl Evaluate for BinaryOperator {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
         let rhs = stash.pop().expect("Not enough operands on stack");
         let lhs = stash.pop().expect("Not enough operands on stack");
         let result = match (lhs, rhs) {
@@ -350,7 +392,7 @@ impl Evaluate for BinaryOperator {
 }
 
 impl Evaluate for VariadicOperator {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
         match self {
             //todo!
             _ => unimplemented!(),
@@ -359,7 +401,7 @@ impl Evaluate for VariadicOperator {
 }
 
 impl Evaluate for Literal {
-    fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
         match self {
             IntLiteral(n) => stash.push(IntLiteral(*n)), // Need to  extract the literal when using it
             BoolLiteral(b) => stash.push(BoolLiteral(*b)),
