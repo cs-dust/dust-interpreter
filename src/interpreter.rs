@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use crate::parser;
 use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt, Block, Literal, UnaryOperator, BinaryOperator, VariadicOperator, PrimitiveOperator};
 use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UnitLiteral};
+use std::ops::Deref;
 
 mod heap;
 
@@ -172,23 +173,25 @@ pub fn binop_microcode_bool(x: bool, y: bool, sym: BinaryOperator) -> crate::int
     return BoolLiteral(output);
 }
 
-// Need to check if both x and y have matching types - TODO! Important
+// Need to check if both x and y have matching types - FIXED
 pub fn apply_binop(x: Literal, y: Literal, sym: BinaryOperator) -> Literal {
-    let x_value = match x {
-        Literal::IntLiteral(value) => *value,
-        Literal::BoolLiteral(value) => *value,
-        _ => panic!("fn. apply_binop unsupported type for x!")
-    };
-    let y_value = match y {
-        Literal::IntLiteral(value) => *value,
-        Literal::BoolLiteral(value) => *value,
-        _ => panic!("fn. apply_binop unsupported type for y!")
-    };
-    let output = match sym {
-        BinaryOperator::Plus|BinaryOperator::Minus|BinaryOperator::Divide|BinaryOperator::Times => binop_microcode_num(x_value, y_value, sym),
-        BinaryOperator::Equal|BinaryOperator::NotEqual|BinaryOperator::Greater|BinaryOperator::GreaterOrEqual|BinaryOperator::Less|BinaryOperator::LessOrEqual => binop_microcode_num_bool(x_value, y_value, sym),
-        BinaryOperator::And|BinaryOperator::Or => binop_microcode_bool(x_value, y_value, sym),
-        _ => panic!("fn. apply_binop unsupported type for sym!")
+    let output = match x { // Check type of x
+      Literal::IntLiteral(x_num) => match y {
+          Literal::IntLiteral(y_num) => match sym { // Ensure x & y are both integer types
+              BinaryOperator::Plus|BinaryOperator::Minus|BinaryOperator::Divide|BinaryOperator::Times => binop_microcode_num(x_num, y_num, sym),
+              BinaryOperator::Equal|BinaryOperator::NotEqual|BinaryOperator::Greater|BinaryOperator::GreaterOrEqual|BinaryOperator::Less|BinaryOperator::LessOrEqual => binop_microcode_num_bool(x_num, y_num, sym),
+              _ => panic!("fn. apply_binop operator unsupported for types x(int) and y(int)!")
+          }
+          _ => panic!("fn. apply_binop x(int) and y have different types!")
+      }
+      Literal::BoolLiteral(x_bool) => match y {
+          Literal::BoolLiteral(y_bool) => match sym { // Ensure x any y are both bool types
+              BinaryOperator::And|BinaryOperator::Or => binop_microcode_bool(x_bool, y_bool, sym),
+              _ => panic!("fn. apply_binop operator unsupported for types x(bool) and y(bool)!")
+          }
+          _ => panic!("fn. apply_binop x(bool) and y have different types!")
+      }
+      _=> panic!("fn. apply_binop primitive operations unsupported for this type!")
     };
     return output;
 }
@@ -211,11 +214,28 @@ pub fn unop_microcode_num(x: i64, sym: UnaryOperator) -> crate::interpreter::Lit
 
 pub fn apply_unop(x: Literal, sym: UnaryOperator) -> Literal {
     let output = match x {
-        Literal::IntLiteral(value) => unop_microcode_num(*value, sym),
-        Literal::BoolLiteral(value) => unop_microcode_bool(*value, sym),
+        Literal::IntLiteral(value) => unop_microcode_num(value, sym),
+        Literal::BoolLiteral(value) => unop_microcode_bool(value, sym),
         _ => panic!("fn. apply_binop unsupported type for x!")
     };
     return output;
+}
+
+/***************************************************************************************************
+* Blocks
+***************************************************************************************************/
+fn scan_declaration_names_from_block(block: &Block) -> Vec<String> { // Fix
+    let stmts_in_block: Vec<Stmt> = block.statements
+        .iter()
+        .fold(vec![], |mut stmts, seq_stmt| match seq_stmt {
+            SequenceStmt::Stmt(stmt) => {
+                stmts.push(stmt.clone());
+                stmts
+            },
+            _ => stmts,
+        });
+
+    scan_declaration_names(&stmts_in_block)
 }
 
 /***************************************************************************************************
@@ -242,10 +262,15 @@ impl Evaluate for Expr {
         match self {
             Expr::IdentifierExpr(name, source_location) => {
                 // Find the identifier in the environment
+                // Push the identifier onto the stash. (Placeholder for now)
+                stash.push(Literal::IntLiteral(0)); // TODO: Complete this.
             }
             Expr::LiteralExpr(literal_value, source_location) => {
+                literal_value.evaluate(instr_stack, stash);
             }
-            Expr::BlockExpr(block, source_location) => {}
+            Expr::BlockExpr(block, source_location) => {
+                block.evaluate(instr_stack, stash);
+            }
             Expr::PrimitiveOperationExpr(primitive_op, source_location) => {}
             Expr::AssignmentExpr { assignee, value, position } => {}
             Expr::ApplicationExpr { is_primitive, callee, arguments, position } => {}
@@ -265,13 +290,14 @@ impl Evaluate for SequenceStmt {
 
 impl Evaluate for Block {
     fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
+        let locals =
         for stmt in &self.statements {
             stmt.evaluate(instr_stack, stash);
         }
     }
 }
 
-impl Evaluate for PrimitiveOperationExpr{
+impl Evaluate for PrimitiveOperation{
     fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
         match self {
             PrimitiveOperation::UnaryOperation { operator, operand } => {
@@ -335,10 +361,10 @@ impl Evaluate for VariadicOperator {
 impl Evaluate for Literal {
     fn evaluate(&self, instr_stack: &mut Vec<Stmt>, stash: &mut Vec<Literal>) {
         match self {
-            Literal::IntLiteral(n) => stash.push(IntLiteral(*n)), // Need to  extract the literal when using it
-            Literal::BoolLiteral(b) => stash.push(BoolLiteral(*b)),
-            Literal::StringLiteral(s) => {}, // Heap
-            Literal::UnitLiteral => {}, // Heap
+            IntLiteral(n) => stash.push(IntLiteral(*n)), // Need to  extract the literal when using it
+            BoolLiteral(b) => stash.push(BoolLiteral(*b)),
+            StringLiteral(s) => {}, // Heap
+            UnitLiteral => {}, // Heap
         }
     }
 }
