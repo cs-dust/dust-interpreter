@@ -8,7 +8,7 @@ use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt,
 use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UndefinedLiteral, UnitLiteral};
 use std::ops::Deref;
 use std::process::id;
-use crate::parser::ast::DataType::String;
+use std::string::String;
 
 mod heap;
 
@@ -35,7 +35,7 @@ struct Assignment {
     expr: Expr
 }
 
-#[derive((Debug, Clone))]
+#[derive(Debug, Clone)]
 struct Assignment_i {
     sym: String
 }
@@ -149,7 +149,7 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
     // S is the stash of evaluated values
     let mut S: Vec<Literal> = Vec::new(); // TODO: Environments
     // We start with main
-    A.push(AgendaInstrs::Stmt(functions.list[main_idx].clone()));
+    A.push(AgendaInstrs::Stmt(functions.list[main_idx].clone())); // TODO: Push only main's block onto agenda
     while !A.is_empty() {
         let curr: AgendaInstrs = A.pop().expect("Literally impossible but ok");
         curr.evaluate(&mut A, &mut S); // Borrowing w/ Mutable Reference
@@ -337,7 +337,7 @@ impl Evaluate for AgendaInstrs {
                 Instructions::Assignment_i(assn) => {
                     // Peek top of stash
                     let v = match stash.peek() {
-                        Some(value) => *value.clone(),
+                        Some(value) => *(value.clone()),
                         None => panic!("Why is nothing in the stash??")
                     };
                     // Assign the value to the name in the environment TODO
@@ -355,7 +355,7 @@ impl Evaluate for Stmt {
                   let name = get_name(name);
                    // TODO: Put name in the environment
                    instr_stack.push(AgendaInstrs::Literal(Literal::UndefinedLiteral));
-                   instr_stack.push(AgendaInstrs::Pop);
+                   instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
                    let a = Assignment {
                        sym: name.clone(),
                        expr: expr.clone()
@@ -372,10 +372,22 @@ impl Evaluate for Stmt {
                     .collect::<Vec<String>>()
                     .into_iter()
                     .for_each(|name| {
-                        // Add each vraibel
-                    })
-            }
-            Stmt::ExprStmt(expr) => expr.evaluate(instr_stack, stash)
+                        // Add each variable to the env
+                    });
+                // TODO Fix
+            },
+            Stmt::ExprStmt(expr) => match expr {
+                Expr::ReturnExpr(expr, loc) => {
+                    instr_stack.push(AgendaInstrs::Instructions(Instructions::Reset));
+                    instr_stack.push(AgendaInstrs::Expr(**expr));
+                },
+                _ => {
+                    instr_stack.push(AgendaInstrs::Literal(Literal::UndefinedLiteral));
+                    instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
+                    instr_stack.push(AgendaInstrs::Expr(*(expr.clone())));
+                }
+            },
+            _ => panic!("Unsupported statement")
         }
     }
 }
