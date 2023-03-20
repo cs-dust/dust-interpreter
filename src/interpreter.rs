@@ -5,45 +5,62 @@ use std::collections::HashMap;
 // use crate::interpreter::heap::Heap;
 use crate::parser;
 use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt, Block, Literal, UnaryOperator, BinaryOperator, VariadicOperator, PrimitiveOperator};
-use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UnitLiteral};
+use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UndefinedLiteral, UnitLiteral};
 use std::ops::Deref;
 use std::process::id;
+use crate::parser::ast::DataType::String;
 
 mod heap;
 
+#[derive(Debug, Clone)]
 struct TopLevelMap {
     map: HashMap<String, usize>,
     list: Vec<Stmt>,
     idx: usize
 }
 
+#[derive(Debug, Clone)]
 struct UnOp {
     sym: UnaryOperator
 }
 
+#[derive(Debug, Clone)]
 struct BinOp {
     sym: BinaryOperator
 }
 
+#[derive(Debug, Clone)]
+struct Assignment {
+    sym: String,
+    expr: Expr
+}
+
+#[derive((Debug, Clone))]
+struct Assignment_i {
+    sym: String
+}
+
+#[derive(Debug, Clone)]
 pub enum Instructions {
     Reset,
-    Assignment,
-    UnOp,
-    BinOp,
+    Assignment(Assignment),
+    UnOp(UnOp),
+    BinOp(BinOp),
     Pop,
     App,
     Branch,
     Env,
-    ArrLit,
-    ArrAcc,
-    ArrAssignment
+    Assignment_i(Assignment_i)
 }
 
+#[derive(Debug, Clone)]
 pub enum AgendaInstrs {
-    Instructions,
-    Stmt,
-    Block,
-    SequenceStmt
+    Instructions(Instructions),
+    Stmt(Stmt),
+    Block(Block),
+    SequenceStmt(SequenceStmt),
+    Literal(Literal),
+    Expr(Expr)
 }
 
 /***************************************************************************************************
@@ -128,13 +145,13 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
     println!("main function index: {}", main_idx);
 
     // A is our stack of instructions as in the Source EC evaluator
-    let mut A: Vec<Stmt> = Vec::new();
+    let mut A: Vec<AgendaInstrs> = Vec::new();
     // S is the stash of evaluated values
     let mut S: Vec<Literal> = Vec::new(); // TODO: Environments
     // We start with main
-    A.push(functions.list[main_idx].clone());
+    A.push(AgendaInstrs::Stmt(functions.list[main_idx].clone()));
     while !A.is_empty() {
-        let curr: Stmt = A.pop().expect("Literally impossible but ok");
+        let curr: AgendaInstrs = A.pop().expect("Literally impossible but ok");
         curr.evaluate(&mut A, &mut S); // Borrowing w/ Mutable Reference
     }
 }
@@ -272,18 +289,92 @@ fn scan_out_block_declarations(block: &Block) -> Vec<String> {
 }
 
 /***************************************************************************************************
+* Stack
+***************************************************************************************************/
+trait Stack {
+    fn peek(&mut self) -> Option<&Literal>;
+}
+
+impl Stack for Vec<Literal> {
+    fn peek(&mut self) -> Option<&Literal> {
+        match self.len() {
+            0 => None,
+            n => Some(&self[n - 1]),
+        }
+    }
+}
+
+/***************************************************************************************************
 * Evaluation
 ***************************************************************************************************/
 pub trait Evaluate {
     fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>);
 }
 
+impl Evaluate for AgendaInstrs {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
+        match self {
+            AgendaInstrs::Stmt(stmt) => stmt.evaluate(instr_stack, stash),
+            AgendaInstrs::SequenceStmt(stmts) => stmts.evaluate(instr_stack, stash),
+            AgendaInstrs::Block(blk) => blk.evaluate(instr_stack, stash),
+            AgendaInstrs::Literal(lit) => lit.evaluate(instr_stack, stash),
+            AgendaInstrs::Expr(expr) => expr.evaluate(instr_stack, stash),
+            AgendaInstrs::Instructions(instr) => { match instr {
+                Instructions::Reset => {},
+                Instructions::Assignment(assn) => {
+                    let a = Assignment_i {
+                        sym: assn.clone().sym
+                    };
+                    instr_stack.push(AgendaInstrs::Instructions(Instructions::Assignment_i(a)));
+                    instr_stack.push(AgendaInstrs::Expr(assn.clone().expr));
+                },
+                Instructions::UnOp(unop) => {},
+                Instructions::BinOp(binop) => {},
+                Instructions::Pop => {},
+                Instructions::App => {},
+                Instructions::Branch => {},
+                Instructions::Env => {},
+                Instructions::Assignment_i(assn) => {
+                    // Peek top of stash
+                    let v = match stash.peek() {
+                        Some(value) => *value.clone(),
+                        None => panic!("Why is nothing in the stash??")
+                    };
+                    // Assign the value to the name in the environment TODO
+                }
+            }}
+        }
+    }
+}
+
 impl Evaluate for Stmt {
     fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
         match self {
-            Stmt::LetStmt { name, is_mutable, annotation, value, position } => {}
-            Stmt::StaticStmt { name, is_mutable, annotation, value, position } => {}
-            Stmt::FuncDeclaration { name, lifetime_parameters, parameters, return_type, body, position } => {}
+            Stmt::LetStmt { name, is_mutable, annotation, value, position } => match value {
+               Some(expr) => {
+                  let name = get_name(name);
+                   // TODO: Put name in the environment
+                   instr_stack.push(AgendaInstrs::Literal(Literal::UndefinedLiteral));
+                   instr_stack.push(AgendaInstrs::Pop);
+                   let a = Assignment {
+                       sym: name.clone(),
+                       expr: expr.clone()
+                   };
+                   instr_stack.push(AgendaInstrs::Instructions(Instructions::Assignment(a)));
+               },
+                None => panic!("Unbounded declaration is currently unsupported!")
+            },
+            Stmt::FuncDeclaration { name, lifetime_parameters, parameters, return_type, body, position } => {
+                let no_params = parameters.len();
+                parameters
+                    .iter()
+                    .map(|(expr, _) | get_name(expr))
+                    .collect::<Vec<String>>()
+                    .into_iter()
+                    .for_each(|name| {
+                        // Add each vraibel
+                    })
+            }
             Stmt::ExprStmt(expr) => expr.evaluate(instr_stack, stash)
         }
     }
@@ -406,7 +497,7 @@ impl Evaluate for Literal {
             IntLiteral(n) => stash.push(IntLiteral(*n)), // Need to  extract the literal when using it
             BoolLiteral(b) => stash.push(BoolLiteral(*b)),
             StringLiteral(s) => {}, // Heap
-            UnitLiteral => {}, // Heap
+            UnitLiteral => { stash.push(UnitLiteral) },
         }
     }
 }

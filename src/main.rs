@@ -4,6 +4,7 @@ use std::process;
 
 mod parser;
 mod interpreter;
+mod test;
 
 fn main() {
     let source = fs::read_to_string("./examples/function_return_example.rs").expect("Unable to read file");

@@ -26,7 +26,7 @@ pub enum DataType {
     Unit,
     Ref(Option<LifetimeParameter>, Box<DataType>),
     MutRef(Option<LifetimeParameter>, Box<DataType>),
-    Func(Vec<LifetimeParameter>, Vec<DataType>, Box<DataType>),
+    Func(Vec<LifetimeParameter>, Vec<DataType>, Box<DataType>)
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +35,7 @@ pub enum Literal {
     BoolLiteral(bool),
     StringLiteral(String),
     UnitLiteral,
+    UndefinedLiteral
 }
 
 #[derive(Debug, Clone)]
