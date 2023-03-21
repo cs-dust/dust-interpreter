@@ -34,8 +34,7 @@ pub enum Literal {
     IntLiteral(i64),
     BoolLiteral(bool),
     StringLiteral(String),
-    UnitLiteral,
-    UndefinedLiteral
+    UnitLiteral
 }
 
 #[derive(Debug, Clone)]
