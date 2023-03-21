@@ -6,7 +6,7 @@ use std::collections::HashMap;
 // use crate::interpreter::heap::Heap;
 use crate::parser;
 use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt, Block, Literal, UnaryOperator, BinaryOperator, VariadicOperator, PrimitiveOperator};
-use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UndefinedLiteral, UnitLiteral};
+use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UnitLiteral};
 use std::ops::Deref;
 use std::process::id;
 use std::string::String;
@@ -59,7 +59,8 @@ pub enum AgendaInstrs {
     Block(Block),
     SequenceStmt(SequenceStmt),
     Literal(Literal),
-    Expr(Expr)
+    Expr(Expr),
+    PrimitiveOperation(PrimitiveOperator)
 }
 
 
@@ -153,10 +154,34 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
     while !A.is_empty() {
         let curr: AgendaInstrs = A.pop().expect("Literally impossible but ok");
         curr.evaluate(&mut A, &mut S); // Borrowing w/ Mutable Reference
-        println!("loop");
+        println!("{:#?}", curr);
     }
 }
 
+/***************************************************************************************************
+* Get the identifier name
+***************************************************************************************************/
+fn get_name(expr: &Expr) -> String {
+    match expr {
+        Expr::IdentifierExpr(name, sourcelocation) => name.clone(),
+        _ => panic!("fn. get_name could not find identifier to get name from")
+    }
+}
+/***************************************************************************************************
+* Stack
+***************************************************************************************************/
+trait Stack {
+    fn peek(&mut self) -> Option<&Literal>;
+}
+
+impl Stack for Vec<Literal> {
+    fn peek(&mut self) -> Option<&Literal> {
+        match self.len() {
+            0 => None,
+            n => Some(&self[n - 1]),
+        }
+    }
+}
 /***************************************************************************************************
 * Evaluation
 ***************************************************************************************************/
@@ -169,52 +194,156 @@ impl Evaluate for AgendaInstrs {
         match self {
             AgendaInstrs::Stmt(stmt) => stmt.evaluate(instr_stack, stash),
             // AgendaInstrs::SequenceStmt(stmts) => stmts.evaluate(instr_stack, stash),
-            // AgendaInstrs::Block(blk) => blk.evaluate(instr_stack, stash),
+            AgendaInstrs::Block(blk) => blk.evaluate(instr_stack, stash),
             // AgendaInstrs::Literal(lit) => lit.evaluate(instr_stack, stash),
-            // AgendaInstrs::Expr(expr) => expr.evaluate(instr_stack, stash),
-            // AgendaInstrs::Instructions(instr) => { match instr {
-            //     Instructions::Reset => {},
-            //     Instructions::Assignment(assn) => {
-            //         let a = Assignment_i {
-            //             sym: assn.clone().sym
-            //         };
-            //         instr_stack.push(AgendaInstrs::Instructions(Instructions::Assignment_i(a)));
-            //         instr_stack.push(AgendaInstrs::Expr(assn.clone().expr));
-            //     },
-            //     Instructions::UnOp(unop) => {},
-            //     Instructions::BinOp(binop) => {},
-                 Instructions::Pop => {
-                     
-                 },
-            //     Instructions::App => {},
-            //     Instructions::Branch => {},
-            //     Instructions::Env => {},
-            //     Instructions::Assignment_i(assn) => {
-            //         // Peek top of stash
-            //         let v = match stash.peek() {
-            //             Some(value) => *(value.clone()),
-            //             None => panic!("Why is nothing in the stash??")
-            //         };
-            //         // Assign the value to the name in the environment TODO
-            //     }
-            _ => println!("Nothing is here")
-            //}
+            AgendaInstrs::Expr(expr) => expr.evaluate(instr_stack, stash),
+            AgendaInstrs::Instructions(instr) => {
+                match instr {
+                    //     Instructions::Reset => {},
+                        Instructions::Assignment(assn) => {
+                            let a = Assignment_i {
+                                sym: assn.clone().sym
+                            };
+                            instr_stack.push(AgendaInstrs::Instructions(Instructions::Assignment_i(a)));
+                            instr_stack.push(AgendaInstrs::Expr(assn.clone().expr));
+                        },
+                    //     Instructions::UnOp(unop) => {},
+                    //     Instructions::BinOp(binop) => {},
+                    Instructions::Pop => {
+                        stash.pop();
+                        println!("Pop!!")
+                    },
+                    //     Instructions::App => {},
+                    //     Instructions::Branch => {},
+                    //     Instructions::Env => {},
+                        Instructions::Assignment_i(assn) => {
+                            // Peek top of stash
+                            let v = match stash.peek() {
+                                Some(value) => value.clone(),
+                                None => panic!("Why is nothing in the stash??")
+                            };
+                            // Assign the value to the name in the environment TODO
+                            println!("{:#?}", v);
+                        }
+                    _ => println!("Nothing is here")
+                }
             }
+            _ => println!("Nothing is here")
         }
     }
+}
 
 
 impl Evaluate for Stmt {
     fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
         match self {
+            Stmt::LetStmt {name, is_mutable, annotation, value, position} => match value {
+                Some(expr) => {
+                    let name = get_name(name);
+                    // TODO: Put name in the environment
+                    instr_stack.push(AgendaInstrs::Literal(Literal::UnitLiteral));
+                    instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
+                    let a = Assignment {
+                        sym: name.clone(),
+                        expr: expr.clone()
+                    };
+                    instr_stack.push(AgendaInstrs::Instructions(Instructions::Assignment(a)));
+                },
+                None => panic!("Unbounded declaration is currently unsupported!")
+            },
             Stmt::FuncDeclaration { name, lifetime_parameters, parameters, return_type, body, position } => {
-                println!("Function declared");
-                instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
-                stash.push(Literal::IntLiteral(9));
-            }
+                // let no_params = parameters.len();
+                // parameters
+                //     .iter()
+                //     .map(|(expr, _) | get_name(expr))
+                //     .collect::<Vec<String>>()
+                //     .into_iter()
+                //     .for_each(|name| {
+                //         // Add each variable to the env
+                //     });
+                // TODO: Fix
+                instr_stack.push(AgendaInstrs::Block(body.clone()));
+            },
+            Stmt::ExprStmt(expr) => match expr {
+                Expr::ReturnExpr(expr, loc) => {
+                    println!("In the resturn stmt");
+                    instr_stack.push(AgendaInstrs::Instructions(Instructions::Reset));
+                    let expr_clone = expr.clone();
+                    instr_stack.push(AgendaInstrs::Expr(*expr_clone));
+                },
+                _ => {
+                    instr_stack.push(AgendaInstrs::Literal(Literal::UnitLiteral));
+                    instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
+                    instr_stack.push(AgendaInstrs::Expr((expr.clone())));
+                }
+            },
             _ => {
                 println!("Not a function");
             }
+        }
+    }
+}
+
+impl Evaluate for Block {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
+        //let locals = scan_out_block_declarations(self);
+        // TODO: Locals into the environment, as unassigned
+        // locals
+        //     .into_iter()
+        //     .for_each(|name| {
+        //         // TODO: Push into env
+        //     });
+        // TODO: Push current environment onto agenda
+        // TODO: Push each statement onto the agenda (reverse order),similar to handle_sequence in ec-evaluator
+        let mut statements_clone = self.statements.clone();
+        let mut curr_stmt: Option<SequenceStmt> = statements_clone.pop();
+        while curr_stmt.is_some() {
+            let curr: SequenceStmt = curr_stmt.expect("No block statements?"); // current statement
+            match curr.clone() {
+                SequenceStmt::Stmt(s) => {
+                    instr_stack.push(AgendaInstrs::Stmt(s));
+                    instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
+                }
+                SequenceStmt::Block(b) => instr_stack.push(AgendaInstrs::Block(b))
+            }
+            curr_stmt = statements_clone.pop();
+        }
+        instr_stack.pop(); // Remove the last pop that was put
+    }
+}
+
+impl Evaluate for Expr {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
+        match self {
+            Expr::IdentifierExpr(name, source_location) => {
+                // Find the identifier in the environment
+                // Push the identifier onto the stash. (Placeholder for now)
+                stash.push(Literal::IntLiteral(0)); // TODO: Complete this.
+            }
+            Expr::LiteralExpr(literal_value, source_location) => {
+                literal_value.evaluate(instr_stack, stash);
+            }
+            Expr::BlockExpr(block, source_location) => {
+                block.evaluate(instr_stack, stash);
+            }
+            Expr::PrimitiveOperationExpr(primitive_op, source_location) => {
+                //instr_stack.push(AgendaInstrs::PrimitiveOperator())
+            }
+            Expr::AssignmentExpr { assignee, value, position } => {}
+            Expr::ApplicationExpr { is_primitive, callee, arguments, position } => {}
+            Expr::ReturnExpr(expression, source_location) => {}
+        }
+    }
+}
+
+impl Evaluate for Literal {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
+        match self {
+            IntLiteral(n) => stash.push(IntLiteral(*n)), // Need to  extract the literal when using it
+            BoolLiteral(b) => stash.push(BoolLiteral(*b)),
+            StringLiteral(s) => {}, // Heap
+            UnitLiteral => { stash.push(UnitLiteral) },
+            _ => println!("hi")
         }
     }
 }

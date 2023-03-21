@@ -5,7 +5,7 @@ use std::collections::HashMap;
 // use crate::interpreter::heap::Heap;
 use crate::parser;
 use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt, Block, Literal, UnaryOperator, BinaryOperator, VariadicOperator, PrimitiveOperator};
-use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UndefinedLiteral, UnitLiteral};
+use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UnitLiteral};
 use std::ops::Deref;
 use std::process::id;
 use std::string::String;
@@ -354,7 +354,7 @@ impl Evaluate for Stmt {
                Some(expr) => {
                   let name = get_name(name);
                    // TODO: Put name in the environment
-                   instr_stack.push(AgendaInstrs::Literal(Literal::UndefinedLiteral));
+                   instr_stack.push(AgendaInstrs::Literal(Literal::UnitLiteral));
                    instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
                    let a = Assignment {
                        sym: name.clone(),
@@ -382,7 +382,7 @@ impl Evaluate for Stmt {
                     instr_stack.push(AgendaInstrs::Expr(**expr));
                 },
                 _ => {
-                    instr_stack.push(AgendaInstrs::Literal(Literal::UndefinedLiteral));
+                    instr_stack.push(AgendaInstrs::Literal(Literal::UnitLiteral));
                     instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
                     instr_stack.push(AgendaInstrs::Expr(*(expr.clone())));
                 }
@@ -407,7 +407,8 @@ impl Evaluate for Expr {
             Expr::BlockExpr(block, source_location) => {
                 block.evaluate(instr_stack, stash);
             }
-            Expr::PrimitiveOperationExpr(primitive_op, source_location) => {}
+            Expr::PrimitiveOperationExpr(primitive_op, source_location) => {
+            }
             Expr::AssignmentExpr { assignee, value, position } => {}
             Expr::ApplicationExpr { is_primitive, callee, arguments, position } => {}
             Expr::ReturnExpr(expression, source_location) => {}
