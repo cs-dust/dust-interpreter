@@ -1,5 +1,5 @@
-use core::panicking::panic;
-// use std::panic::panic_any;
+//use core::panicking::panic;
+use std::panic::panic_any;
 // use std::cell::RefCell;
 use std::collections::HashMap;
 // use crate::interpreter::heap::Heap;

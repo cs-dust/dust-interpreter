@@ -3,7 +3,7 @@ use std::fs;
 use std::process;
 
 mod parser;
-//mod interpreter;
+// mod interpreter;
 mod test;
 
 fn main() {
@@ -14,7 +14,7 @@ fn main() {
         println!("Program has no executable units. To compile your program, please add a function.");
         process::exit(0);
     }
-     //println!("{:#?}", ast);
+    //println!("{:#?}", ast);
     //interpreter::run(&mut ast);
     test::run(&mut ast);
 }
