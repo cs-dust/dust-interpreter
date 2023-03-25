@@ -359,8 +359,8 @@ impl Evaluate for AgendaInstrs {
                         stash.push(value);
                     },
                     Instructions::BinOp(binop) => {
-                        let lhs_operand = stash.pop();
                         let rhs_operand = stash.pop();
+                        let lhs_operand = stash.pop();
                         let operator = binop.sym;
                         let value = apply_binop(lhs_operand, rhs_operand, operator);
                         println!("{:#?}", value.clone());
