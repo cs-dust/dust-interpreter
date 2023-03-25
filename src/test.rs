@@ -12,6 +12,12 @@ use std::process::id;
 use std::string::String;
 
 #[derive(Debug, Clone)]
+pub struct Environment {
+    store: HashMap<String, u64>,
+    pool: Vec<Literal>
+}
+
+#[derive(Debug, Clone)]
 struct TopLevelMap {
     map: HashMap<String, usize>,
     list: Vec<Stmt>,
@@ -40,15 +46,20 @@ struct Assignment_i {
 }
 
 #[derive(Debug, Clone)]
+struct Mark {
+    mem: u64
+}
+
+#[derive(Debug, Clone)]
 pub enum Instructions {
     Reset,
+    Mark(Mark),
     Assignment(Assignment),
     UnOp(UnOp),
     BinOp(BinOp),
     Pop,
     App,
     Branch,
-    Env,
     Assignment_i(Assignment_i)
 }
 
@@ -148,15 +159,103 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
     // A is our stack of instructions as in the Source EC evaluator
     let mut A: Vec<AgendaInstrs> = Vec::new();
     // S is the stash of evaluated values
-    let mut S: Vec<Literal> = Vec::new(); // TODO: Environments
+    let mut S: Vec<Literal> = Vec::new();
+    // E is the environment
+    let mut E = Environment {
+        store: HashMap::new(),
+        pool: vec![]
+    };
     // We start with main
-    A.push(AgendaInstrs::Stmt(functions.list[main_idx].clone())); // TODO: Push only main's block onto agenda
+    A.push(AgendaInstrs::Stmt(functions.list[main_idx].clone()));
     while !A.is_empty() {
         let curr: AgendaInstrs = A.pop().expect("Literally impossible but ok");
-        curr.evaluate(&mut A, &mut S); // Borrowing w/ Mutable Reference
-        println!("{:#?}", curr);
+        curr.evaluate(&mut A, &mut S, &mut E); // Borrowing w/ Mutable Reference
     }
 }
+
+/***************************************************************************************************
+* Operators
+***************************************************************************************************/
+pub fn binop_microcode_num(x: i64, y: i64, sym: BinaryOperator) -> Literal {
+    let output =  match sym {
+        BinaryOperator::Plus => x + y,
+        BinaryOperator::Minus => x - y,
+        BinaryOperator::Times => x * y,
+        BinaryOperator::Divide => x / y,
+        _ => panic!("fn. binop_microcode_num operation unsupported!")
+    };
+    return IntLiteral(output);
+}
+
+pub fn binop_microcode_num_bool(x: i64, y: i64, sym: BinaryOperator) -> Literal {
+    let output = match sym {
+        BinaryOperator::Equal => x == y,
+        BinaryOperator::NotEqual => x != y,
+        BinaryOperator::Greater => x > y,
+        BinaryOperator::GreaterOrEqual => x >= y,
+        BinaryOperator::Less => x < y,
+        BinaryOperator::LessOrEqual => x <= y,
+        _ => panic!("fn. binop_microcode_num_bool operation unsupported!")
+    };
+    return BoolLiteral(output);
+}
+
+pub fn binop_microcode_bool(x: bool, y: bool, sym: BinaryOperator) -> Literal {
+    let output =  match sym {
+        BinaryOperator::And => x && y,
+        BinaryOperator::Or => x || y,
+        _ => panic!("fn. binop_microcode_bool operation unsupported!")
+    };
+    return BoolLiteral(output);
+}
+
+pub fn apply_binop(x: Option<Literal>, y: Option<Literal>, sym: BinaryOperator) -> Literal {
+    let output = match x { // Check type of x
+        Some(Literal::IntLiteral(x_num)) => match y {
+            Some(Literal::IntLiteral(y_num)) => match sym { // Ensure x & y are both integer types
+                BinaryOperator::Plus|BinaryOperator::Minus|BinaryOperator::Divide|BinaryOperator::Times => binop_microcode_num(x_num, y_num, sym),
+                BinaryOperator::Equal|BinaryOperator::NotEqual|BinaryOperator::Greater|BinaryOperator::GreaterOrEqual|BinaryOperator::Less|BinaryOperator::LessOrEqual => binop_microcode_num_bool(x_num, y_num, sym),
+                _ => panic!("fn. apply_binop operator unsupported for types x(int) and y(int)!")
+            }
+            _ => panic!("fn. apply_binop x(int) and y have different types!")
+        }
+        Some(Literal::BoolLiteral(x_bool)) => match y {
+            Some(Literal::BoolLiteral(y_bool)) => match sym { // Ensure x any y are both bool types
+                BinaryOperator::And|BinaryOperator::Or => binop_microcode_bool(x_bool, y_bool, sym),
+                _ => panic!("fn. apply_binop operator unsupported for types x(bool) and y(bool)!")
+            }
+            _ => panic!("fn. apply_binop x(bool) and y have different types!")
+        }
+        _=> panic!("fn. apply_binop primitive operations unsupported for this type!")
+    };
+    return output;
+}
+
+pub fn unop_microcode_bool(x: bool, sym: UnaryOperator) -> Literal {
+    let output = match sym {
+        UnaryOperator::Not => !x,
+        _=> panic!("fn. unop_microcode_bool unsupported operator!")
+    };
+    return BoolLiteral(output);
+}
+
+pub fn unop_microcode_num(x: i64, sym: UnaryOperator) -> Literal {
+    let output = match sym {
+        UnaryOperator::UnaryMinus => -x,
+        _=> panic!("fn. unop_microcode_num unsupported operator!")
+    };
+    return IntLiteral(output);
+}
+
+pub fn apply_unop(x: Option<Literal>, sym: UnaryOperator) -> Literal {
+    let output = match x {
+        Some(Literal::IntLiteral(value)) => unop_microcode_num(value, sym),
+        Some(Literal::BoolLiteral(value)) => unop_microcode_bool(value, sym),
+        _ => panic!("fn. apply_binop unsupported type for x!")
+    };
+    return output;
+}
+
 
 /***************************************************************************************************
 * Get the identifier name
@@ -186,46 +285,63 @@ impl Stack for Vec<Literal> {
 * Evaluation
 ***************************************************************************************************/
 pub trait Evaluate {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>);
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Environment);
 }
 
 impl Evaluate for AgendaInstrs {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Environment) {
         match self {
-            AgendaInstrs::Stmt(stmt) => stmt.evaluate(instr_stack, stash),
+            AgendaInstrs::Stmt(stmt) => stmt.evaluate(instr_stack, stash, env),
             // AgendaInstrs::SequenceStmt(stmts) => stmts.evaluate(instr_stack, stash),
-
-            AgendaInstrs::Block(blk) => blk.evaluate(instr_stack, stash),
-            AgendaInstrs::Literal(lit) => lit.evaluate(instr_stack, stash),
-            AgendaInstrs::Expr(expr) => expr.evaluate(instr_stack, stash),
+            AgendaInstrs::PrimitiveOperation(prim_op) => prim_op.evaluate(instr_stack, stash, env),
+            AgendaInstrs::Block(blk) => blk.evaluate(instr_stack, stash, env),
+            AgendaInstrs::Literal(lit) => lit.evaluate(instr_stack, stash, env),
+            AgendaInstrs::Expr(expr) => expr.evaluate(instr_stack, stash, env),
             AgendaInstrs::Instructions(instr) => {
                 match instr {
-                    //     Instructions::Reset => {},
-                        Instructions::Assignment(assn) => {
+                    Instructions::Reset => {
+                        match instr_stack.pop() {
+                            Some(AgendaInstrs::Instructions(Instructions::Mark(m)) =>
+                        };
+                    },
+                    Instructions::Assignment(assn) => {
                             let a = Assignment_i {
                                 sym: assn.clone().sym
                             };
                             instr_stack.push(AgendaInstrs::Instructions(Instructions::Assignment_i(a)));
                             instr_stack.push(AgendaInstrs::Expr(assn.clone().expr));
                         },
-                    //     Instructions::UnOp(unop) => {},
-                    //     Instructions::BinOp(binop) => {},
+                    Instructions::UnOp(unop) => {
+                        let operand = stash.pop();
+                        let operator = unop.sym;
+                        let value = apply_unop(operand, operator);
+                        stash.push(value);
+                    },
+                    Instructions::BinOp(binop) => {
+                        let lhs_operand = stash.pop();
+                        let rhs_operand = stash.pop();
+                        let operator = binop.sym;
+                        let value = apply_binop(lhs_operand, rhs_operand, operator);
+                        println!("{:#?}", value.clone());
+                        stash.push(value);
+                    },
                     Instructions::Pop => {
                         stash.pop();
                         println!("Pop!!")
                     },
-                    //     Instructions::App => {},
-                    //     Instructions::Branch => {},
-                    //     Instructions::Env => {},
-                        Instructions::Assignment_i(assn) => {
-                            // Peek top of stash
-                            let v = match stash.peek() {
-                                Some(value) => value.clone(),
-                                None => panic!("Why is nothing in the stash??")
-                            };
-                            // Assign the value to the name in the environment TODO
-                            println!("{:#?}", v);
-                        }
+                    Instructions::App => {},
+                    Instructions::Branch => {},
+                    Instructions::Mark(m) => {
+
+                    },
+                    Instructions::Assignment_i(assn) => {
+                        let v = match stash.peek() {
+                            Some(value) => value.clone(),
+                            None => panic!("Why is nothing in the stash??")
+                        };
+                        // Assign the value to the name in the environment TODO
+                        // println!("{:#?}", v);
+                    }
                     _ => println!("Nothing is here")
                 }
             }
@@ -236,7 +352,7 @@ impl Evaluate for AgendaInstrs {
 
 
 impl Evaluate for Stmt {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Environment) {
         match self {
             Stmt::LetStmt {name, is_mutable, annotation, value, position} => match value {
                 Some(expr) => {
@@ -286,16 +402,15 @@ impl Evaluate for Stmt {
 }
 
 impl Evaluate for Block {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Environment) {
+        let old_env = Mark { // TODO: store the previous env on the heap with mark pointing to that mem location
+            mem: 0
+        };
+        instr_stack.push(AgendaInstrs::Instructions(Instructions::Mark(old_env))); // Drop mark on agenda
+
         //let locals = scan_out_block_declarations(self);
         // TODO: Locals into the environment, as unassigned
-        // locals
-        //     .into_iter()
-        //     .for_each(|name| {
-        //         // TODO: Push into env
-        //     });
-        // TODO: Push current environment onto agenda
-        // TODO: Push each statement onto the agenda (reverse order),similar to handle_sequence in ec-evaluator
+
         let mut statements_clone = self.statements.clone();
         let mut curr_stmt: Option<SequenceStmt> = statements_clone.pop();
         while curr_stmt.is_some() {
@@ -314,21 +429,22 @@ impl Evaluate for Block {
 }
 
 impl Evaluate for Expr {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Environment) {
         match self {
             Expr::IdentifierExpr(name, source_location) => {
                 // Find the identifier in the environment
                 // Push the identifier onto the stash. (Placeholder for now)
-                stash.push(Literal::IntLiteral(0)); // TODO: Complete this.
+                stash.push(Literal::IntLiteral(5)); // TODO: Complete this.
             }
             Expr::LiteralExpr(literal_value, source_location) => {
-                literal_value.evaluate(instr_stack, stash);
+                literal_value.evaluate(instr_stack, stash, env);
             }
-            Expr::BlockExpr(block, source_location) => {
-                block.evaluate(instr_stack, stash); // TODO: DROP MARK ON THE AGENDA
+            Expr::BlockExpr(block, source_location) => { // Block expr need to have a return stmt
+                block.evaluate(instr_stack, stash, env);
             }
             Expr::PrimitiveOperationExpr(primitive_op, source_location) => {
-                let prim_op = **primitive_op;
+                let prim_op = *primitive_op.clone();
+                instr_stack.push(AgendaInstrs::PrimitiveOperation(prim_op));
             }
             Expr::AssignmentExpr { assignee, value, position } => {}
             Expr::ApplicationExpr { is_primitive, callee, arguments, position } => {}
@@ -337,8 +453,36 @@ impl Evaluate for Expr {
     }
 }
 
+impl Evaluate for PrimitiveOperation{
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Environment) {
+        match self {
+            PrimitiveOperation::UnaryOperation { operator, operand } => {
+                let un_operator = UnOp {
+                    sym: operator.clone()
+                };
+                let un_operand = operand.clone();
+                instr_stack.push(AgendaInstrs::Instructions(Instructions::UnOp(un_operator)));
+                instr_stack.push(AgendaInstrs::Expr(un_operand));
+            },
+            PrimitiveOperation::BinaryOperation { operator, first_operand, second_operand } => {
+                let bin_operator = BinOp {
+                  sym: operator.clone()
+                };
+                let lhs_operand = first_operand.clone();
+                let rhs_operand = second_operand.clone();
+                instr_stack.push(AgendaInstrs::Instructions(Instructions::BinOp(bin_operator)));
+                instr_stack.push(AgendaInstrs::Expr(rhs_operand));
+                instr_stack.push(AgendaInstrs::Expr(lhs_operand));
+            },
+            PrimitiveOperation::VariadicOperation { operator, operands } => {
+                // TODO
+            },
+        }
+    }
+}
+
 impl Evaluate for Literal {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Environment) {
         match self {
             IntLiteral(n) => stash.push(IntLiteral(*n)), // Need to  extract the literal when using it
             BoolLiteral(b) => stash.push(BoolLiteral(*b)),
