@@ -60,7 +60,7 @@ pub enum AgendaInstrs {
     SequenceStmt(SequenceStmt),
     Literal(Literal),
     Expr(Expr),
-    PrimitiveOperation(PrimitiveOperator)
+    PrimitiveOperation(PrimitiveOperation)
 }
 
 
@@ -194,8 +194,9 @@ impl Evaluate for AgendaInstrs {
         match self {
             AgendaInstrs::Stmt(stmt) => stmt.evaluate(instr_stack, stash),
             // AgendaInstrs::SequenceStmt(stmts) => stmts.evaluate(instr_stack, stash),
+
             AgendaInstrs::Block(blk) => blk.evaluate(instr_stack, stash),
-            // AgendaInstrs::Literal(lit) => lit.evaluate(instr_stack, stash),
+            AgendaInstrs::Literal(lit) => lit.evaluate(instr_stack, stash),
             AgendaInstrs::Expr(expr) => expr.evaluate(instr_stack, stash),
             AgendaInstrs::Instructions(instr) => {
                 match instr {
@@ -266,7 +267,7 @@ impl Evaluate for Stmt {
             },
             Stmt::ExprStmt(expr) => match expr {
                 Expr::ReturnExpr(expr, loc) => {
-                    println!("In the resturn stmt");
+                    println!("In the return stmt");
                     instr_stack.push(AgendaInstrs::Instructions(Instructions::Reset));
                     let expr_clone = expr.clone();
                     instr_stack.push(AgendaInstrs::Expr(*expr_clone));
@@ -324,10 +325,10 @@ impl Evaluate for Expr {
                 literal_value.evaluate(instr_stack, stash);
             }
             Expr::BlockExpr(block, source_location) => {
-                block.evaluate(instr_stack, stash);
+                block.evaluate(instr_stack, stash); // TODO: DROP MARK ON THE AGENDA
             }
             Expr::PrimitiveOperationExpr(primitive_op, source_location) => {
-                //instr_stack.push(AgendaInstrs::PrimitiveOperator())
+                let prim_op = **primitive_op;
             }
             Expr::AssignmentExpr { assignee, value, position } => {}
             Expr::ApplicationExpr { is_primitive, callee, arguments, position } => {}
@@ -343,7 +344,7 @@ impl Evaluate for Literal {
             BoolLiteral(b) => stash.push(BoolLiteral(*b)),
             StringLiteral(s) => {}, // Heap
             UnitLiteral => { stash.push(UnitLiteral) },
-            _ => println!("hi")
+            _ => panic!("This literal type is not supported!")
         }
     }
 }
