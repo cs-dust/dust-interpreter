@@ -406,7 +406,7 @@ impl Evaluate for Stmt {
             Stmt::LetStmt {name, is_mutable, annotation, value, position} => match value {
                 Some(expr) => {
                     let name = get_name(name);
-                    // TODO: Put name in the environment (?)
+                    // TODO: Put name in the environment
                     instr_stack.push(AgendaInstrs::Literal(Literal::UnitLiteral));
                     instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
                     let a = Assignment {
