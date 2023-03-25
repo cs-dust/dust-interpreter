@@ -3,8 +3,7 @@ use std::fs;
 use std::process;
 
 mod parser;
-// mod interpreter;
-mod test;
+mod interpreter;
 
 fn main() {
     let source = fs::read_to_string("./examples/expression_example.rs").expect("Unable to read file");
@@ -15,6 +14,5 @@ fn main() {
         process::exit(0);
     }
     //println!("{:#?}", ast);
-    //interpreter::run(&mut ast);
-    test::run(&mut ast);
+    interpreter::run(&mut ast);
 }
