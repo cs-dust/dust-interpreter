@@ -1,7 +1,7 @@
 use std::panic::panic_any;
 // use std::cell::RefCell;
 use std::collections::HashMap;
-// use crate::interpreter::heap::Heap;
+//use crate::interpreter::heap::Heap;
 use crate::parser;
 use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt, Block, Literal, UnaryOperator, BinaryOperator, VariadicOperator, PrimitiveOperator};
 use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UnitLiteral};
@@ -302,6 +302,7 @@ fn get_name(expr: &Expr) -> String {
         _ => panic!("fn. get_name could not find identifier to get name from")
     }
 }
+
 /***************************************************************************************************
 * Stack
 ***************************************************************************************************/
@@ -317,6 +318,7 @@ impl Stack for Vec<Literal> {
         }
     }
 }
+
 /***************************************************************************************************
 * Evaluation
 ***************************************************************************************************/
@@ -366,7 +368,7 @@ impl Evaluate for AgendaInstrs {
                     },
                     Instructions::Pop => {
                         stash.pop();
-                        println!("Pop!!")
+                        // println!("Pop!! {:#?}", stash.pop());
                     },
                     Instructions::App => {},
                     Instructions::Branch => {},
@@ -404,7 +406,7 @@ impl Evaluate for Stmt {
             Stmt::LetStmt {name, is_mutable, annotation, value, position} => match value {
                 Some(expr) => {
                     let name = get_name(name);
-                    // TODO: Put name in the environment
+                    // TODO: Put name in the environment (?)
                     instr_stack.push(AgendaInstrs::Literal(Literal::UnitLiteral));
                     instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
                     let a = Assignment {
@@ -521,7 +523,33 @@ impl Evaluate for Expr {
                 instr_stack.push(AgendaInstrs::PrimitiveOperation(prim_op));
             }
             Expr::AssignmentExpr { assignee, value, position } => {}
-            Expr::ApplicationExpr { is_primitive, callee, arguments, position } => {}
+            Expr::ApplicationExpr { is_primitive, callee, arguments, position } => {
+                // Put the arguments on the agenda (backwards)
+                // Store the previous environment
+                // Find the function in the function list (ast)
+                // Create new environment by binding the parameters
+                if is_primitive.is_some() {
+                    match is_primitive.unwrap() {
+                        PrimitiveOperator::Unary(op) => match op {
+                            UnaryOperator::ImmutableBorrow => {},
+                            UnaryOperator::MutableBorrow => {},
+                            UnaryOperator::Dereference => {},
+                            UnaryOperator::StringFrom => {},
+                            UnaryOperator::Drop => {},
+                            UnaryOperator::Len => {},
+                            UnaryOperator::AsStr => {},
+                            UnaryOperator::PushStr => {},
+                            _ => panic!("Evaluate application: Unknown primitive function!"),
+                        },
+                        PrimitiveOperator::Binary(op) => panic!("Evaluate application: Unknown primitive function!"),
+                        PrimitiveOperator::VariadicOperator(vo) => match vo {
+                            VariadicOperator::Println => {
+
+                            }
+                        }
+                    }
+                }
+            }
             Expr::ReturnExpr(expression, source_location) => {}
         }
     }
