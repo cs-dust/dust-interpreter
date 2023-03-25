@@ -293,6 +293,7 @@ impl Evaluate for Stmt {
                 }
             },
             Stmt::IfElseStmt { pred, cons, alt, position } => {
+                println!("In the return stmt");
                 // Evaluate predicate
                 let current = pred.evaluate(instr_stack, stash);
 
