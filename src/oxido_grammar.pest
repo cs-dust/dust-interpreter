@@ -35,9 +35,28 @@ block = { "{" ~ sequence ~ expr? ~ "}" }
 
 sequence = { (stmt | block)* }
 
-stmt = { declaration | static_declaration | function_declaration | expr_stmt }
+stmt = { declaration
+        | static_declaration
+        | function_declaration
+        | expr_stmt
+        | if_else_stmt
+        | while_loop_stmt
+        | for_loop_stmt
+        }
 
 expr_stmt = { expr ~ ";" }
+
+if_else_stmt =
+    { "if " ~ expr ~ block ~ optional_else? }
+
+optional_else =
+    { "else " ~ block? }
+
+while_loop_stmt =
+    { "while "~ expr ~ block }
+
+for_loop_stmt =
+    { "for " ~ identifier ~ " in " ~ expr ~ block }
 
 expr = { assignment }
 

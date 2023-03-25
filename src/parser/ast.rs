@@ -176,6 +176,24 @@ pub enum Stmt {
         position: SourceLocation,
     },
     ExprStmt(Expr),
+    IfElseStmt {
+        pred: Expr,
+        cons: Block,
+        alt: Option<Block>,     // add optional block for alt
+        position: SourceLocation,
+    },
+    ForLoopStmt {
+        init: Expr,
+        pred: Expr,
+        update: Expr,
+        body: Block,
+        position: SourceLocation,
+    },
+    WhileLoopStmt {
+        pred: Expr,
+        body: Expr,
+        position: SourceLocation,
+    }
 }
 
 impl AST for Stmt {
@@ -185,6 +203,9 @@ impl AST for Stmt {
             Stmt::StaticStmt { position, .. } => position.clone(),
             Stmt::FuncDeclaration { position, .. } => position.clone(),
             Stmt::ExprStmt(expr) => expr.get_source_location(),
+            Stmt::IfElseStmt { position, .. } => position.clone(),
+            Stmt::ForLoopStmt { position, .. } => position.clone(),
+            Stmt::WhileLoopStmt { position, .. } => position.clone(),
         }
     }
 }
