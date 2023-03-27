@@ -7,7 +7,7 @@ mod parser;
 mod interpreter;
 
 fn main() {
-    let source = fs::read_to_string("./examples/numeric_types_with_binop.rs").expect("Unable to read file");
+    let source = fs::read_to_string("examples/simple_unop.rs").expect("Unable to read file");
     println!("Parsing...\n");
     let mut ast = parser::parse(&source).expect("Failed to parse given program");
     if ast.len() < 1 {
