@@ -178,8 +178,8 @@ pub enum Stmt {
     ExprStmt(Expr),
     IfElseStmt {
         pred: Expr,
-        cons: Block,
-        alt: Option<Block>,     // add optional block for alt
+        cons: Expr,
+        alt: Option<Expr>,     // add optional block for alt
         position: SourceLocation,
     },
     ForLoopStmt {

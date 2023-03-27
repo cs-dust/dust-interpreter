@@ -59,6 +59,8 @@ impl OxidoParser {
         Ok(match_nodes!(input.into_children();
             [static_declaration(stmt)] => stmt,
             [function_declaration(stmt)] => stmt,
+            [if_else_stmt(stmt)] => stmt, // New branch for IfElseStmt
+            [declaration(stmt)] => stmt,
         ))
     }
 
@@ -303,18 +305,39 @@ impl OxidoParser {
     }
 
     // Process if-else statement node
+    // fn if_else_stmt(input: Node) -> Result<Stmt> {
+    //     let (line, col) = input.as_span().start_pos().line_col();
+    //     let position = SourceLocation { line, col };
+    //
+    //     let mut children = input.into_children();
+    //     let condition = expr(children.next().unwrap())?;
+    //     let then_block = block(children.next().unwrap())?;
+    //     let else_block = match children.next() {
+    //         Some(node) => Some(block(node)?),
+    //         None => None,
+    //     };
+    //
+    //     Ok(Stmt::IfElseStmt {
+    //         pred,
+    //         cons,
+    //         alt,
+    //         position,
+    //     })
+    // }
+
+    // Parse if-else statement
     fn if_else_stmt(input: Node) -> Result<Stmt> {
         let (line, col) = input.as_span().start_pos().line_col();
         let position = SourceLocation { line, col };
 
-        let mut children = input.into_children();
-        let condition = expr(children.next().unwrap())?;
-        let then_block = block(children.next().unwrap())?;
-        let else_block = match children.next() {
-            Some(node) => Some(block(node)?),
-            None => None,
-        };
+        // Match input's children against expected rule sequence
+        let (pred, cons, alt) =
+            match_nodes!(input.children();
+                [expr(pred), block(cons), block(alt)] => (pred, cons, Some(alt)),
+                [expr(pred), block(cons)] => (pred, cons, None),
+            );
 
+        // Create IfElseStmt with parsed values
         Ok(Stmt::IfElseStmt {
             pred,
             cons,
@@ -394,6 +417,7 @@ impl OxidoParser {
 
     // Process disjunction node
     fn disjunction(input: Node) -> Result<Expr> {
+        // Create binary expression
         let create_binary_expr = |operator, first_operand, second_operand, src_location|
             Expr::PrimitiveOperationExpr(
                 Box::from(PrimitiveOperation::BinaryOperation {
@@ -404,13 +428,18 @@ impl OxidoParser {
                 src_location,
             );
 
+        // Match input to a disjunction node and its children
         match_nodes!(input.children();
             [conjunction(initial_operand), conjunction(repetitions)..] => {
+                // Reverse repetitions
+                // Create iterator to peek at the next repetition
                 let mut repetitions = repetitions.rev().peekable();
                 match repetitions.next() {
                     Some(expr) => {
                         let mut second_operand = expr;
 
+                        // If no more repetitions
+                        // Create binary OR expression
                         if repetitions.peek().is_none() {
                             let src_location = initial_operand.get_source_location();
                             Ok(create_binary_expr(
@@ -420,6 +449,7 @@ impl OxidoParser {
                                 src_location,
                             ))
                         } else {
+                            // Otherwise, iterate over repetitions, create binary OR expressions
                             for first_operand in repetitions {
                                 let src_location = first_operand.get_source_location();
                                 second_operand = create_binary_expr(
@@ -430,6 +460,7 @@ impl OxidoParser {
                                 );
                             }
 
+                            // Create binary OR expression with initial operand & resulting operand
                             let src_location = initial_operand.get_source_location();
                             Ok(create_binary_expr(
                                 BinaryOperator::Or,
@@ -444,6 +475,9 @@ impl OxidoParser {
             },
         )
     }
+
+    // Process conjunction node
+    // Similar to disjunction node
     fn conjunction(input: Node) -> Result<Expr> {
         let create_binary_expr = |operator, first_operand, second_operand, src_location|
             Expr::PrimitiveOperationExpr(
@@ -457,11 +491,15 @@ impl OxidoParser {
 
         match_nodes!(input.children();
             [equality(initial_operand), equality(repetitions)..] => {
+                // Reverse repetitions
+                // Create an iterator to peek at the next repetition
                 let mut repetitions = repetitions.rev().peekable();
                 match repetitions.next() {
                     Some(expr) => {
                         let mut second_operand = expr;
 
+                        // If no more repetitions
+                        // Create binary AND expression
                         if repetitions.peek().is_none() {
                             let src_location = initial_operand.get_source_location();
                             Ok(create_binary_expr(
@@ -471,6 +509,7 @@ impl OxidoParser {
                                 src_location,
                             ))
                         } else {
+                            // Otherwise, iterate over repetitions, create binary AND expressions
                             for first_operand in repetitions {
                                 let src_location = first_operand.get_source_location();
                                 second_operand = create_binary_expr(
@@ -481,6 +520,7 @@ impl OxidoParser {
                                 );
                             }
 
+                            // Create binary AND expression with initial operand & resulting operand
                             let src_location = initial_operand.get_source_location();
                             Ok(create_binary_expr(
                                 BinaryOperator::And,
@@ -495,6 +535,8 @@ impl OxidoParser {
             },
         )
     }
+
+
     fn equality(input: Node) -> Result<Expr> {
         let create_binary_expr = |operator, first_operand, second_operand, src_location|
             Expr::PrimitiveOperationExpr(

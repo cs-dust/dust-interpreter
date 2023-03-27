@@ -47,10 +47,10 @@ stmt = { declaration
 expr_stmt = { expr ~ ";" }
 
 if_else_stmt =
-    { "if " ~ expr ~ block ~ optional_else? }
+    { "if " ~ expr ~ block ~ ("else " ~ block)? }
 
-optional_else =
-    { "else " ~ block? }
+// optional_else =
+//     { "else " ~ block? }
 
 while_loop_stmt =
     { "while "~ expr ~ block }
