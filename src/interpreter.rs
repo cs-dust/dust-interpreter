@@ -168,6 +168,7 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
     while !A.is_empty() {
         let curr: AgendaInstrs = A.pop().expect("Literally impossible but ok");
         curr.evaluate(&mut A, &mut S, &mut E); // Borrowing w/ Mutable Reference
+        println!("{:#?}", curr.clone());
     }
 }
 
@@ -208,6 +209,7 @@ pub fn binop_microcode_bool(x: bool, y: bool, sym: BinaryOperator) -> Literal {
 }
 
 pub fn apply_binop(x: Option<Literal>, y: Option<Literal>, sym: BinaryOperator) -> Literal {
+    //print!("{:#?}", x);
     let output = match x { // Check type of x
         Some(Literal::IntLiteral(x_num)) => match y {
             Some(Literal::IntLiteral(y_num)) => match sym { // Ensure x & y are both integer types
@@ -360,10 +362,11 @@ impl Evaluate for AgendaInstrs {
                     },
                     Instructions::BinOp(binop) => {
                         let rhs_operand = stash.pop();
+                        //println!("{:#?}", rhs_operand.clone());
                         let lhs_operand = stash.pop();
+                        //println!("{:#?}", lhs_operand.clone());
                         let operator = binop.sym;
                         let value = apply_binop(lhs_operand, rhs_operand, operator);
-                        println!("{:#?}", value.clone());
                         stash.push(value);
                     },
                     Instructions::Pop => {
@@ -384,6 +387,7 @@ impl Evaluate for AgendaInstrs {
                         let nam = assn.clone().sym;
                         match env.store.get(&nam) { // Get index of where it is stored in the pool
                             Some(val) => {
+                                env.pool.remove(*val as usize);
                                 env.pool.insert(*val as usize, v); // Assign value to variable
                             }
                             None => {
@@ -464,6 +468,7 @@ impl Evaluate for Block {
             let curr: String = curr_local.expect("No locals");
             match env.store.get(&curr) { // Get index of where it is stored in the pool
                 Some(val) => { // If the map points to some memory in the pool already
+                    env.pool.remove(*val as usize);
                     env.pool.insert(*val as usize, Literal::UnitLiteral); // Unassigned for now
                 }
                 None => { // Else assign a new spot in the pool and then map the identifier to that
