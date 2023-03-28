@@ -1,5 +1,12 @@
+mod environment;
+
+use std::borrow::Borrow;
+use environment::Environment;
+use environment::Object;
+use environment::TopLevelMap;
 use std::panic::panic_any;
-// use std::cell::RefCell;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::collections::HashMap;
 //use crate::interpreter::heap::Heap;
 use crate::parser;
@@ -9,18 +16,11 @@ use std::ops::Deref;
 use std::process::id;
 use std::string::String;
 
-#[derive(Debug, Clone)]
-pub struct Environment {
-    store: HashMap<String, u64>,
-    pool: Vec<Literal>
-}
-
-#[derive(Debug, Clone)]
-struct TopLevelMap {
-    map: HashMap<String, usize>,
-    list: Vec<Stmt>,
-    idx: usize
-}
+// #[derive(Debug, Clone)]
+// pub struct Environment {
+//     store: HashMap<String, u64>,
+//     pool: Vec<Literal>
+// }
 
 #[derive(Debug, Clone)]
 struct UnOp {
@@ -44,14 +44,9 @@ struct Assignment_i {
 }
 
 #[derive(Debug, Clone)]
-struct Mark {
-    mem: u64
-}
-
-#[derive(Debug, Clone)]
 pub enum Instructions {
     Reset,
-    Mark(Mark),
+    Mark,
     Assignment(Assignment),
     UnOp(UnOp),
     BinOp(BinOp),
@@ -69,7 +64,8 @@ pub enum AgendaInstrs {
     SequenceStmt(SequenceStmt),
     Literal(Literal),
     Expr(Expr),
-    PrimitiveOperation(PrimitiveOperation)
+    PrimitiveOperation(PrimitiveOperation),
+    Environment(Rc<RefCell<Environment>>)
 }
 
 
@@ -83,7 +79,7 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
 
     // A list of functions in the interpreted program
     // The vector stores all the functions as Stmt values
-    // The hashmap allows us to find a function by a string label
+    // The hashmap allows us to find a function by a string label TODO: remove map, not needed anymore
     let mut functions = TopLevelMap {
         map: HashMap::new(),
         list: Vec::new(),
@@ -102,7 +98,7 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
 
     // While we have a statement to evaluate
     while curr_stmt_option.is_some() {
-        let curr: Stmt = curr_stmt_option.expect("How is this even possible bruh"); // current statement
+        let curr: Stmt = curr_stmt_option.expect("How is this even possible bruh");
         // add a static or a function to the above lists as necessary.
         // any other type of statement is not allowed in the top level.
         match curr.clone() {
@@ -154,17 +150,16 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
     println!("{} function(s) have been declared", functions.idx);
     println!("main function index: {}", main_idx);
 
-    // A is our stack of instructions as in the Source EC evaluator
-    let mut A: Vec<AgendaInstrs> = Vec::new();
-    // S is the stash of evaluated values
-    let mut S: Vec<Literal> = Vec::new();
-    // E is the environment
-    let mut E = Environment {
-        store: HashMap::new(),
-        pool: vec![]
-    };
-    // We start with main
-    A.push(AgendaInstrs::Stmt(functions.list[main_idx].clone()));
+    let mut A: Vec<AgendaInstrs> = Vec::new(); // A is our stack of instructions as in the Source EC evaluator
+    let mut S: Vec<Literal> = Vec::new(); // S is the stash of evaluated values
+    //let mut E = Environment::new(); // E is the environment
+    let mut global_env = Environment::new();
+    global_env.insert_top_level(functions.clone()); // Insert top level declarations into environment
+    global_env.insert_top_level(statics.clone());
+    let mut E = Rc::new(RefCell::new(global_env));
+
+    A.push(AgendaInstrs::Stmt(functions.list[main_idx].clone())); // We start with main
+
     while !A.is_empty() {
         let curr: AgendaInstrs = A.pop().expect("Literally impossible but ok");
         curr.evaluate(&mut A, &mut S, &mut E); // Borrowing w/ Mutable Reference
@@ -325,11 +320,11 @@ impl Stack for Vec<Literal> {
 * Evaluation
 ***************************************************************************************************/
 pub trait Evaluate {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Environment);
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Rc<RefCell<Environment>>);
 }
 
 impl Evaluate for AgendaInstrs {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Environment) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Rc<RefCell<Environment>>) {
         match self {
             AgendaInstrs::Stmt(stmt) => stmt.evaluate(instr_stack, stash, env),
             // AgendaInstrs::SequenceStmt(stmts) => stmts.evaluate(instr_stack, stash),
@@ -337,13 +332,19 @@ impl Evaluate for AgendaInstrs {
             AgendaInstrs::Block(blk) => blk.evaluate(instr_stack, stash, env),
             AgendaInstrs::Literal(lit) => lit.evaluate(instr_stack, stash, env),
             AgendaInstrs::Expr(expr) => expr.evaluate(instr_stack, stash, env),
+            AgendaInstrs::Environment(ref e) => { // Restore environment
+                //let mut old_env = Rc::clone(e);
+                let old_env = e.borrow();
+                env = &mut Rc::new(*old_env);
+                print!("Environment restored!");
+            }
             AgendaInstrs::Instructions(instr) => {
                 match instr {
                     Instructions::Reset => {
                         match instr_stack.pop() {
-                            Some(AgendaInstrs::Instructions(Instructions::Mark(m))) => {
-                                // TODO: pop_environment and mutate the current environment
-                            }, // Mark found?
+                            Some(AgendaInstrs::Instructions(Instructions::Mark)) => {
+                                // Mark found, now environment restoration occurs
+                            },
                             _ => instr_stack.push(AgendaInstrs::Instructions(Instructions::Reset)) // Continue loop by pushing reset back onto agenda
                         }
                     },
@@ -375,8 +376,8 @@ impl Evaluate for AgendaInstrs {
                     },
                     Instructions::App => {},
                     Instructions::Branch => {},
-                    Instructions::Mark(m) => {
-                        // TODO: pop_environment and mutate the current environment
+                    Instructions::Mark => {
+                        // Nothing
                     },
                     Instructions::Assignment_i(assn) => {
                         let v = match stash.peek() {
@@ -385,27 +386,20 @@ impl Evaluate for AgendaInstrs {
                         };
                         // Assign the value to the name in the environment
                         let nam = assn.clone().sym;
-                        match env.store.get(&nam) { // Get index of where it is stored in the pool
-                            Some(val) => {
-                                env.pool.remove(*val as usize);
-                                env.pool.insert(*val as usize, v); // Assign value to variable
-                            }
-                            None => {
-                                panic!("Variable not initialised in the environment!");
-                            }
-                        }
+                        //TODO: Check if this works
+                        env.borrow_mut().set(nam, Object::Literal(v));
                     }
-                    _ => println!("Nothing is here")
+                    _ => println!("No instruction?")
                 }
             }
-            _ => println!("Nothing is here")
+            _ => println!("Agenda is empty")
         }
     }
 }
 
 
 impl Evaluate for Stmt {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Environment) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, mut env: &mut Rc<RefCell<Environment>>) {
         match self {
             Stmt::LetStmt {name, is_mutable, annotation, value, position} => match value {
                 Some(expr) => {
@@ -431,7 +425,7 @@ impl Evaluate for Stmt {
                 //     .for_each(|name| {
                 //         // Add each variable to the env
                 //     });
-                // TODO: Fix
+                // TODO: Fix (On second thought, maybe don't need to)
                 instr_stack.push(AgendaInstrs::Block(body.clone()));
             },
             Stmt::ExprStmt(expr) => match expr {
@@ -455,29 +449,29 @@ impl Evaluate for Stmt {
 }
 
 impl Evaluate for Block {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Environment) {
-        let old_env = Mark { // TODO: store the previous env on the heap with mark pointing to that mem location
-            mem: 0
-        };
-        instr_stack.push(AgendaInstrs::Instructions(Instructions::Mark(old_env))); // Drop mark on agenda
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, mut env: &mut Rc<RefCell<Environment>>) {
+        // let old_env = Mark { // TODO: store the previous env on the heap with mark pointing to that mem location
+        //     mem: 0
+        // }; TODO: CHANGE THIS TO ENV STUFF
+        let old_env = Rc::clone(env);
+        if instr_stack.len() != 0 {
+            instr_stack.push(AgendaInstrs::Environment(old_env));
+        }
+
+        instr_stack.push(AgendaInstrs::Instructions(Instructions::Mark)); // Drop mark on agenda
 
         let mut locals = scan_out_block_declarations(self);
         let mut curr_local: Option<String> = locals.pop();
+
+        let mut new_env = Environment::extend_environment(Rc::clone(&old_env));
+
         while curr_local.is_some() {
-            // Overwrite current env values if there are similarly named variables
             let curr: String = curr_local.expect("No locals");
-            match env.store.get(&curr) { // Get index of where it is stored in the pool
-                Some(val) => { // If the map points to some memory in the pool already
-                    env.pool.remove(*val as usize);
-                    env.pool.insert(*val as usize, Literal::UnitLiteral); // Unassigned for now
-                }
-                None => { // Else assign a new spot in the pool and then map the identifier to that
-                    env.pool.push(Literal::UnitLiteral);
-                    env.store.insert(curr, (env.pool.len() - 1) as u64);
-                }
-            }
+            new_env.set(curr, Object::Literal(Literal::UnitLiteral)); // Initialise to default Unit Literal Values
             curr_local = locals.pop();
         }
+
+        env = &mut Rc::new(RefCell::new(new_env)); // TODO: Check if this works (it seems wrong)
 
         let mut statements_clone = self.statements.clone();
         let mut curr_stmt: Option<SequenceStmt> = statements_clone.pop();
@@ -497,18 +491,15 @@ impl Evaluate for Block {
 }
 
 impl Evaluate for Expr {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Environment) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, mut env: &mut Rc<RefCell<Environment>>) {
         match self {
             Expr::IdentifierExpr(name, source_location) => {
-                match env.store.get(name) { // Find identifier in the environment
-                    Some(idx) => {
-                        let value = match env.pool.get((*idx) as usize) { // Find identifier in pool
-                            Some(lit) => {
-                                lit.clone()
-                            }
-                            None => {
-                                panic!("evaluate identifier expr: Identifier is not in pool!");
-                            }
+                match env.borrow_mut().store.get(name) { // Find identifier in the environment
+                    Some(o) => {
+                        let obj = o.clone();
+                        let value = match obj { // Find identifier in pool
+                            Object::Literal(lit) => lit.clone(),
+                            _ => panic!("Identifier expr should point to literal only!")
                         };
                         stash.push(value);
                     }
@@ -561,7 +552,7 @@ impl Evaluate for Expr {
 }
 
 impl Evaluate for PrimitiveOperation{
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Environment) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, mut env: &mut Rc<RefCell<Environment>>) {
         match self {
             PrimitiveOperation::UnaryOperation { operator, operand } => {
                 let un_operator = UnOp {
@@ -589,7 +580,7 @@ impl Evaluate for PrimitiveOperation{
 }
 
 impl Evaluate for Literal {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Environment) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, mut env: &mut Rc<RefCell<Environment>>) {
         match self {
             IntLiteral(n) => stash.push(IntLiteral(*n)), // Need to  extract the literal when using it
             BoolLiteral(b) => stash.push(BoolLiteral(*b)),
