@@ -16,12 +16,6 @@ use std::ops::Deref;
 use std::process::id;
 use std::string::String;
 
-// #[derive(Debug, Clone)]
-// pub struct Environment {
-//     store: HashMap<String, u64>,
-//     pool: Vec<Literal>
-// }
-
 #[derive(Debug, Clone)]
 struct UnOp {
     sym: UnaryOperator
@@ -65,7 +59,7 @@ pub enum AgendaInstrs {
     Literal(Literal),
     Expr(Expr),
     PrimitiveOperation(PrimitiveOperation),
-    Environment(Rc<RefCell<Environment>>)
+    Environment(Environment)
 }
 
 
@@ -152,19 +146,19 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
 
     let mut A: Vec<AgendaInstrs> = Vec::new(); // A is our stack of instructions as in the Source EC evaluator
     let mut S: Vec<Literal> = Vec::new(); // S is the stash of evaluated values
-    //let mut E = Environment::new(); // E is the environment
     let mut global_env = Environment::new();
     global_env.insert_top_level(functions.clone()); // Insert top level declarations into environment
     global_env.insert_top_level(statics.clone());
-    let mut E = Rc::new(RefCell::new(global_env));
+    let mut E = Box::new(global_env);
 
     A.push(AgendaInstrs::Stmt(functions.list[main_idx].clone())); // We start with main
 
     while !A.is_empty() {
         let curr: AgendaInstrs = A.pop().expect("Literally impossible but ok");
         curr.evaluate(&mut A, &mut S, &mut E); // Borrowing w/ Mutable Reference
-        println!("{:#?}", curr.clone());
+        //println!("{:#?}", curr.clone());
     }
+    println!("{:#?}", E.clone());
 }
 
 /***************************************************************************************************
@@ -320,11 +314,11 @@ impl Stack for Vec<Literal> {
 * Evaluation
 ***************************************************************************************************/
 pub trait Evaluate {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Rc<RefCell<Environment>>);
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>);
 }
 
 impl Evaluate for AgendaInstrs {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Rc<RefCell<Environment>>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
         match self {
             AgendaInstrs::Stmt(stmt) => stmt.evaluate(instr_stack, stash, env),
             // AgendaInstrs::SequenceStmt(stmts) => stmts.evaluate(instr_stack, stash),
@@ -333,10 +327,8 @@ impl Evaluate for AgendaInstrs {
             AgendaInstrs::Literal(lit) => lit.evaluate(instr_stack, stash, env),
             AgendaInstrs::Expr(expr) => expr.evaluate(instr_stack, stash, env),
             AgendaInstrs::Environment(ref e) => { // Restore environment
-                //let mut old_env = Rc::clone(e);
-                let old_env = e.borrow();
-                env = &mut Rc::new(*old_env);
-                print!("Environment restored!");
+                let mut old_env = e.clone();
+                *env = Box::new(old_env); // Restore
             }
             AgendaInstrs::Instructions(instr) => {
                 match instr {
@@ -387,7 +379,7 @@ impl Evaluate for AgendaInstrs {
                         // Assign the value to the name in the environment
                         let nam = assn.clone().sym;
                         //TODO: Check if this works
-                        env.borrow_mut().set(nam, Object::Literal(v));
+                        env.set(nam, Object::Literal(v));
                     }
                     _ => println!("No instruction?")
                 }
@@ -399,7 +391,7 @@ impl Evaluate for AgendaInstrs {
 
 
 impl Evaluate for Stmt {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, mut env: &mut Rc<RefCell<Environment>>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
         match self {
             Stmt::LetStmt {name, is_mutable, annotation, value, position} => match value {
                 Some(expr) => {
@@ -449,13 +441,14 @@ impl Evaluate for Stmt {
 }
 
 impl Evaluate for Block {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, mut env: &mut Rc<RefCell<Environment>>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
         // let old_env = Mark { // TODO: store the previous env on the heap with mark pointing to that mem location
         //     mem: 0
         // }; TODO: CHANGE THIS TO ENV STUFF
-        let old_env = Rc::clone(env);
+        let outer = env.clone();
+        let old_env = env.clone();
         if instr_stack.len() != 0 {
-            instr_stack.push(AgendaInstrs::Environment(old_env));
+            instr_stack.push(AgendaInstrs::Environment(*old_env)); // Put environment on agenda
         }
 
         instr_stack.push(AgendaInstrs::Instructions(Instructions::Mark)); // Drop mark on agenda
@@ -463,7 +456,7 @@ impl Evaluate for Block {
         let mut locals = scan_out_block_declarations(self);
         let mut curr_local: Option<String> = locals.pop();
 
-        let mut new_env = Environment::extend_environment(Rc::clone(&old_env));
+        let mut new_env = Environment::extend_environment(outer);
 
         while curr_local.is_some() {
             let curr: String = curr_local.expect("No locals");
@@ -471,7 +464,7 @@ impl Evaluate for Block {
             curr_local = locals.pop();
         }
 
-        env = &mut Rc::new(RefCell::new(new_env)); // TODO: Check if this works (it seems wrong)
+        *env = Box::new(new_env);
 
         let mut statements_clone = self.statements.clone();
         let mut curr_stmt: Option<SequenceStmt> = statements_clone.pop();
@@ -491,10 +484,10 @@ impl Evaluate for Block {
 }
 
 impl Evaluate for Expr {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, mut env: &mut Rc<RefCell<Environment>>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
         match self {
             Expr::IdentifierExpr(name, source_location) => {
-                match env.borrow_mut().store.get(name) { // Find identifier in the environment
+                match env.store.get(name) { // Find identifier in the environment
                     Some(o) => {
                         let obj = o.clone();
                         let value = match obj { // Find identifier in pool
@@ -552,7 +545,7 @@ impl Evaluate for Expr {
 }
 
 impl Evaluate for PrimitiveOperation{
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, mut env: &mut Rc<RefCell<Environment>>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
         match self {
             PrimitiveOperation::UnaryOperation { operator, operand } => {
                 let un_operator = UnOp {
@@ -580,7 +573,7 @@ impl Evaluate for PrimitiveOperation{
 }
 
 impl Evaluate for Literal {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, mut env: &mut Rc<RefCell<Environment>>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
         match self {
             IntLiteral(n) => stash.push(IntLiteral(*n)), // Need to  extract the literal when using it
             BoolLiteral(b) => stash.push(BoolLiteral(*b)),
