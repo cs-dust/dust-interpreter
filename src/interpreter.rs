@@ -69,7 +69,8 @@ pub enum AgendaInstrs {
     SequenceStmt(SequenceStmt),
     Literal(Literal),
     Expr(Expr),
-    PrimitiveOperation(PrimitiveOperation)
+    PrimitiveOperation(PrimitiveOperation),
+    Environment(Environment)
 }
 
 
