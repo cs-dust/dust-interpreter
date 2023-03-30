@@ -38,6 +38,14 @@ struct Assignment_i {
 }
 
 #[derive(Debug, Clone)]
+struct App_i {
+    arity: usize,
+    builtin: bool,
+    sym: String
+}
+
+
+#[derive(Debug, Clone)]
 pub enum Instructions {
     Reset,
     Mark,
@@ -47,7 +55,8 @@ pub enum Instructions {
     Pop,
     App,
     Branch,
-    Assignment_i(Assignment_i)
+    Assignment_i(Assignment_i),
+    App_i(App_i)
 }
 
 #[derive(Debug, Clone)]
@@ -298,11 +307,20 @@ fn get_name(expr: &Expr) -> String {
 * Stack
 ***************************************************************************************************/
 trait Stack {
-    fn peek(&mut self) -> Option<&Literal>;
+    fn peek<T>(&mut self) -> Option<&T>;
 }
 
 impl Stack for Vec<Literal> {
-    fn peek(&mut self) -> Option<&Literal> {
+    fn peek<T>(&mut self) -> Option<&Literal> {
+        match self.len() {
+            0 => None,
+            n => Some(&self[n - 1]),
+        }
+    }
+}
+
+impl Stack for Vec<AgendaInstrs> {
+    fn peek<T>(&mut self) -> Option<&AgendaInstrs> {
         match self.len() {
             0 => None,
             n => Some(&self[n - 1]),
@@ -378,8 +396,39 @@ impl Evaluate for AgendaInstrs {
                         };
                         // Assign the value to the name in the environment
                         let nam = assn.clone().sym;
-                        //TODO: Check if this works
                         env.set(nam, Object::Literal(v));
+                    },
+                    Instructions::App_i(app) => {
+                        let arity= app.arity;
+                        let args = vec![];
+                        for i in (arity - 1)..=0 {
+                            args[i] = stash.pop();
+                        }
+                        if app.builtin {
+                            match app.sym.as_str() {
+                                "println" => println!("{:#?}", args),
+                                _ => panic!("Builtin {} not supported!", app.sym.as_str())
+                            }
+                        } else {
+                            let store_env = match instr_stack.peek() {
+                                Some(AgendaInstrs::Environment(e)) => true,
+                                _ => false
+                            };
+                            let tail_call = match instr_stack.peek() {
+                                Some(AgendaInstrs::Instructions(Instructions::Reset)) => true,
+                                _ => false
+                            };
+                            if (instr_stack.len() == 0 || store_env) {
+                                // Env is not needed, just push mark
+                                instr_stack.push(AgendaInstrs::Instructions(Instructions::Mark));
+                            } else if (tail_call) {
+                                // Tail call, callee's return will push another reset
+                                instr_stack.pop();
+                            } else {
+                                let old_env = env.clone();
+                                instr_stack.push(AgendaInstrs::Environment(*old_env)); // Put environment on agenda
+                            }
+                        }
                     }
                     _ => println!("No instruction?")
                 }
@@ -408,16 +457,6 @@ impl Evaluate for Stmt {
                 None => panic!("Unbounded declaration is currently unsupported!")
             },
             Stmt::FuncDeclaration { name, lifetime_parameters, parameters, return_type, body, position } => {
-                // let no_params = parameters.len();
-                // parameters
-                //     .iter()
-                //     .map(|(expr, _) | get_name(expr))
-                //     .collect::<Vec<String>>()
-                //     .into_iter()
-                //     .for_each(|name| {
-                //         // Add each variable to the env
-                //     });
-                // TODO: Fix (On second thought, maybe don't need to)
                 instr_stack.push(AgendaInstrs::Block(body.clone()));
             },
             Stmt::ExprStmt(expr) => match expr {
@@ -442,9 +481,6 @@ impl Evaluate for Stmt {
 
 impl Evaluate for Block {
     fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
-        // let old_env = Mark { // TODO: store the previous env on the heap with mark pointing to that mem location
-        //     mem: 0
-        // }; TODO: CHANGE THIS TO ENV STUFF
         let outer = env.clone();
         let old_env = env.clone();
         if instr_stack.len() != 0 {
@@ -465,7 +501,7 @@ impl Evaluate for Block {
         }
 
         *env = Box::new(new_env);
-
+        // TODO: Check for function declarations here and add to the environment
         let mut statements_clone = self.statements.clone();
         let mut curr_stmt: Option<SequenceStmt> = statements_clone.pop();
         while curr_stmt.is_some() {
@@ -517,6 +553,7 @@ impl Evaluate for Expr {
                 // Store the previous environment
                 // Find the function in the function list (ast)
                 // Create new environment by binding the parameters
+                let arity = arguments.len();
                 if is_primitive.is_some() {
                     match is_primitive.unwrap() {
                         PrimitiveOperator::Unary(op) => match op {
@@ -533,10 +570,32 @@ impl Evaluate for Expr {
                         PrimitiveOperator::Binary(op) => panic!("Evaluate application: Unknown primitive function!"),
                         PrimitiveOperator::VariadicOperator(vo) => match vo {
                             VariadicOperator::Println => {
-
+                                let instr = App_i {
+                                    arity,
+                                    builtin: true,
+                                    sym: String::from("println")
+                                };
+                                instr_stack.push(AgendaInstrs::Instructions(Instructions::App_i(instr)));
                             }
                         }
                     }
+                } else {
+                    let sym = match callee {
+                        Expr::IdentifierExpr(i, ..) => i.clone()
+                    };
+                    let instr = App_i {
+                        arity,
+                        builtin: false,
+                        sym
+                    };
+                    instr_stack.push(AgendaInstrs::Instructions(Instructions::App_i(instr)));
+                }
+                let mut arguments_clone = arguments.clone();
+                let mut curr_expr: Option<Expr> = arguments_clone.pop();
+                while curr_expr.is_some() { // Put arguments on agenda backwards
+                    let curr: Expr = curr_expr.expect("No arguments");
+                    instr_stack.push(AgendaInstrs::Expr(curr));
+                    curr_expr = arguments_clone.pop();
                 }
             }
             Expr::ReturnExpr(expression, source_location) => {}
@@ -544,7 +603,7 @@ impl Evaluate for Expr {
     }
 }
 
-impl Evaluate for PrimitiveOperation{
+impl Evaluate for PrimitiveOperation {
     fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
         match self {
             PrimitiveOperation::UnaryOperation { operator, operand } => {
@@ -577,7 +636,7 @@ impl Evaluate for Literal {
         match self {
             IntLiteral(n) => stash.push(IntLiteral(*n)), // Need to  extract the literal when using it
             BoolLiteral(b) => stash.push(BoolLiteral(*b)),
-            StringLiteral(s) => {}, // Heap
+            StringLiteral(s) => stash.push(StringLiteral(s.clone())),
             UnitLiteral => { stash.push(UnitLiteral) },
             _ => panic!("This literal type is not supported!")
         }
