@@ -16,8 +16,9 @@ pub struct TopLevelMap {
 #[derive(Debug, Clone)]
 pub struct Environment {
     pub store: HashMap<String, Object>,
-    pub parent: Box<Link<Environment>>
+    parent: Option<Box<Environment>>,
 }
+
 
 // TODO: Replace to accommodate heap address instead
 #[derive(Debug, Clone)]
@@ -26,16 +27,16 @@ pub enum Object {
     DeclStatement(Stmt)
 }
 
-impl Environment {
-    pub fn new () -> Self {
+impl  Environment {
+    pub fn new() -> Self {
         let mut hashmap = HashMap::new();
         Environment {
             store: hashmap,
             parent: None
         }
     }
-    // Returns a new env which is a child of the previous env
-    pub fn extend_environment(outer: Rc<RefCell<Environment>>) -> Self {
+
+    pub fn extend_environment(outer: Box<Environment>) -> Self {
         let mut hashmap = HashMap::new();
         Environment {
             store: hashmap,
@@ -43,8 +44,24 @@ impl Environment {
         }
     }
 
-    pub fn insert_top_level(&mut self, top_level_stmts: TopLevelMap) {
-        let mut top_level_clone = top_level_stmts.clone();
+    pub fn set(&mut self, name: String, val: Object) {
+        self.store.insert(name, val);
+    }
+
+    pub fn get(&mut self, name: &str) -> Option<Object> {
+        match self.store.get(name) {
+            Some (obj) => Some(obj.clone()),
+            None => match self.parent {
+                Some (ref mut parent_env) => {
+                    parent_env.get(name)
+                },
+                None => None,
+            },
+        }
+    }
+
+    pub fn insert_top_level(&mut self, top_level_statements: TopLevelMap) {
+        let mut top_level_clone = top_level_statements.clone();
         let mut curr_stmt: Option<Stmt> = top_level_clone.list.pop();
         while curr_stmt.is_some() {
             let curr: Stmt = curr_stmt.expect("Value");
@@ -68,24 +85,6 @@ impl Environment {
                 _ => panic!("Only Function Declarations or Static Statements allowed in top level. ")
             };
             curr_stmt = top_level_clone.list.pop();
-        }
-    }
-
-
-    pub fn set(&mut self, name: String, val: Object) {
-        self.store.insert(name.to_string(), val);
-    }
-
-    pub fn get(&self, name: String) -> Option<Object> {
-        match self.store.get(&*name.clone()) {
-            Some(obj) => Some(obj.clone()),
-            None => match self.parent {
-                Some(ref parent_env) => {
-                    let env = parent_env.borrow();
-                    env.get(name)
-                },
-                None => None,
-            },
         }
     }
 }
