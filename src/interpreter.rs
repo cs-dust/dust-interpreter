@@ -161,13 +161,16 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
     let mut E = Box::new(global_env);
 
     A.push(AgendaInstrs::Stmt(functions.list[main_idx].clone())); // We start with main
-
+    // TODO: Check if we should have a step limit
     while !A.is_empty() {
         let curr: AgendaInstrs = A.pop().expect("Literally impossible but ok");
         curr.evaluate(&mut A, &mut S, &mut E); // Borrowing w/ Mutable Reference
         //println!("{:#?}", curr.clone());
     }
-    println!("{:#?}", E.clone());
+    if S.is_empty() || S.len() > 1 {
+        println!("Stash is empty!");
+    }
+    println!("{:#?}", S[0]);
 }
 
 /***************************************************************************************************
@@ -306,12 +309,12 @@ fn get_name(expr: &Expr) -> String {
 /***************************************************************************************************
 * Stack
 ***************************************************************************************************/
-trait Stack {
-    fn peek<T>(&mut self) -> Option<&T>;
+trait Stack<T> {
+    fn peek(&mut self) -> Option<&T>;
 }
 
-impl Stack for Vec<Literal> {
-    fn peek<T>(&mut self) -> Option<&Literal> {
+impl Stack<Literal> for Vec<Literal> {
+    fn peek(&mut self) -> Option<&Literal> {
         match self.len() {
             0 => None,
             n => Some(&self[n - 1]),
@@ -319,8 +322,8 @@ impl Stack for Vec<Literal> {
     }
 }
 
-impl Stack for Vec<AgendaInstrs> {
-    fn peek<T>(&mut self) -> Option<&AgendaInstrs> {
+impl Stack<AgendaInstrs> for Vec<AgendaInstrs> {
+    fn peek(&mut self) -> Option<&AgendaInstrs> {
         match self.len() {
             0 => None,
             n => Some(&self[n - 1]),
@@ -400,9 +403,9 @@ impl Evaluate for AgendaInstrs {
                     },
                     Instructions::App_i(app) => {
                         let arity= app.arity;
-                        let args = vec![];
-                        for i in (arity - 1)..=0 {
-                            args[i] = stash.pop();
+                        let mut args = vec![Literal::UnitLiteral; arity];
+                        for i in (0..=(arity - 1)).rev() {
+                            args[i] = stash.pop().expect("Value should be here if arity is > 0");
                         }
                         if app.builtin {
                             match app.sym.as_str() {
@@ -418,16 +421,17 @@ impl Evaluate for AgendaInstrs {
                                 Some(AgendaInstrs::Instructions(Instructions::Reset)) => true,
                                 _ => false
                             };
-                            if (instr_stack.len() == 0 || store_env) {
+                            if instr_stack.len() == 0 || store_env {
                                 // Env is not needed, just push mark
                                 instr_stack.push(AgendaInstrs::Instructions(Instructions::Mark));
-                            } else if (tail_call) {
+                            } else if tail_call {
                                 // Tail call, callee's return will push another reset
                                 instr_stack.pop();
                             } else {
                                 let old_env = env.clone();
                                 instr_stack.push(AgendaInstrs::Environment(*old_env)); // Put environment on agenda
                             }
+                            let func = env.store.get(&*app.sym.clone());
                         }
                     }
                     _ => println!("No instruction?")
@@ -461,7 +465,6 @@ impl Evaluate for Stmt {
             },
             Stmt::ExprStmt(expr) => match expr {
                 Expr::ReturnExpr(expr, loc) => {
-                    println!("In the return stmt");
                     instr_stack.push(AgendaInstrs::Instructions(Instructions::Reset));
                     let expr_clone = expr.clone();
                     instr_stack.push(AgendaInstrs::Expr(*expr_clone));
@@ -580,8 +583,10 @@ impl Evaluate for Expr {
                         }
                     }
                 } else {
-                    let sym = match callee {
-                        Expr::IdentifierExpr(i, ..) => i.clone()
+                    let callee_copy = callee.clone();
+                    let sym = match *callee_copy {
+                        Expr::IdentifierExpr(i, ..) => i.clone(),
+                        _ => panic!("Current implementation only supports identifiers as callees.")
                     };
                     let instr = App_i {
                         arity,
@@ -626,6 +631,7 @@ impl Evaluate for PrimitiveOperation {
             },
             PrimitiveOperation::VariadicOperation { operator, operands } => {
                 // TODO
+                //println!("???");
             },
         }
     }
@@ -636,7 +642,9 @@ impl Evaluate for Literal {
         match self {
             IntLiteral(n) => stash.push(IntLiteral(*n)), // Need to  extract the literal when using it
             BoolLiteral(b) => stash.push(BoolLiteral(*b)),
-            StringLiteral(s) => stash.push(StringLiteral(s.clone())),
+            StringLiteral(s) => {
+                stash.push(StringLiteral(s.clone()));
+            },
             UnitLiteral => { stash.push(UnitLiteral) },
             _ => panic!("This literal type is not supported!")
         }
