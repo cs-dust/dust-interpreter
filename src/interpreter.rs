@@ -1,5 +1,4 @@
 mod environment;
-
 use std::borrow::Borrow;
 use environment::Environment;
 use environment::Object;
@@ -10,11 +9,12 @@ use std::rc::Rc;
 use std::collections::HashMap;
 //use crate::interpreter::heap::Heap;
 use crate::parser;
-use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt, Block, Literal, UnaryOperator, BinaryOperator, VariadicOperator, PrimitiveOperator};
+use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt, Block, Literal, UnaryOperator, BinaryOperator, VariadicOperator, PrimitiveOperator, FuncParameter};
 use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UnitLiteral};
 use std::ops::Deref;
 use std::process::id;
 use std::string::String;
+use crate::parser::ast::Stmt::FuncDeclaration;
 
 #[derive(Debug, Clone)]
 struct UnOp {
@@ -258,6 +258,44 @@ pub fn apply_unop(x: Option<Literal>, sym: UnaryOperator) -> Literal {
 }
 
 /***************************************************************************************************
+* Pushing statements onto agenda in reverse
+***************************************************************************************************/
+pub fn push_block_stmts_reverse(instr_stack: &mut Vec<AgendaInstrs>, statements: Vec<SequenceStmt>) {
+    let mut statements_clone = statements.clone();
+    let mut curr_stmt = statements_clone.pop();
+    while curr_stmt.is_some() {
+        let curr: SequenceStmt = curr_stmt.expect("No block statements?"); // current statement
+        match curr.clone() {
+            SequenceStmt::Stmt(s) => {
+                instr_stack.push(AgendaInstrs::Stmt(s));
+                instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
+            }
+            SequenceStmt::Block(b) => instr_stack.push(AgendaInstrs::Block(b))
+        }
+        curr_stmt = statements_clone.pop();
+    }
+    instr_stack.pop(); // Remove the last pop that was put
+}
+
+/***************************************************************************************************
+* Function parameter extraction
+***************************************************************************************************/
+pub fn scan_out_param_names(params: &Vec<FuncParameter>) -> Vec<String> {
+    let scanned_param = |param: &FuncParameter| -> Vec<String> {
+        let (expr, datatype) = param;
+        let name = get_name(expr);
+        vec![name]
+    };
+
+    params.iter()
+        .map(scanned_param)
+        .fold(vec![], |accumulator, element| {
+            let mut identifiers = accumulator;
+            identifiers.extend(element);
+            identifiers
+        })
+}
+/***************************************************************************************************
 * Scan out declarations: Adapted from oxido-lang and ec-evaluator
 ***************************************************************************************************/
 fn scan_out_declarations(stmts: &Vec<Stmt>) -> Vec<String> {
@@ -305,7 +343,6 @@ fn get_name(expr: &Expr) -> String {
         _ => panic!("fn. get_name could not find identifier to get name from")
     }
 }
-
 /***************************************************************************************************
 * Stack
 ***************************************************************************************************/
@@ -403,10 +440,17 @@ impl Evaluate for AgendaInstrs {
                     },
                     Instructions::App_i(app) => {
                         let arity= app.arity;
-                        let mut args = vec![Literal::UnitLiteral; arity];
-                        for i in (0..=(arity - 1)).rev() {
-                            args[i] = stash.pop().expect("Value should be here if arity is > 0");
-                        }
+                        let mut args = {
+                            if arity == 0 {
+                                vec![]
+                            } else {
+                                let mut arguments = vec![Literal::UnitLiteral; arity];
+                                for i in (0..=(arity - 1)).rev() {
+                                    arguments[i] = stash.pop().expect("Value should be here if arity is > 0");
+                                }
+                                arguments
+                            }
+                        };
                         if app.builtin {
                             match app.sym.as_str() {
                                 "println" => println!("{:#?}", args),
@@ -430,8 +474,36 @@ impl Evaluate for AgendaInstrs {
                             } else {
                                 let old_env = env.clone();
                                 instr_stack.push(AgendaInstrs::Environment(*old_env)); // Put environment on agenda
+                                instr_stack.push(AgendaInstrs::Instructions(Instructions::Mark));
                             }
-                            let func = env.store.get(&*app.sym.clone());
+                            let func_stmt = match env.get(&*app.sym.clone()) {
+                                Some(Object::DeclStatement(s)) => s.clone(),
+                                _ => panic!("Function not declared in scope!")
+                            };
+                            let mut params;
+                            let mut fun_body;
+                            match func_stmt.clone() {
+                                Stmt::FuncDeclaration { name, lifetime_parameters, parameters, return_type, body, position } => {
+                                    params = parameters;
+                                    fun_body = body;
+                                },
+                                _ => panic!("Why does the function not have a function declaration?")
+                            };
+                            // Push the body of the function onto the agenda backwards
+                            // Extend the environment with the new vars
+                            let mut param_names = scan_out_param_names(&params);
+                            let mut locals = scan_out_block_declarations(&fun_body);
+
+                            let outer = env.clone();
+                            let mut new_env = Environment::extend_environment(outer);
+
+                            new_env.bind_parameters(param_names, args);
+                            new_env.insert_locals(locals);
+                            *env = Box::new(new_env); // Change the current env
+
+                            // TODO: Check for function declarations here and add to the environment
+                            let mut statements = fun_body.statements.clone();
+                            push_block_stmts_reverse(instr_stack, statements);
                         }
                     }
                     _ => println!("No instruction?")
@@ -493,32 +565,14 @@ impl Evaluate for Block {
         instr_stack.push(AgendaInstrs::Instructions(Instructions::Mark)); // Drop mark on agenda
 
         let mut locals = scan_out_block_declarations(self);
-        let mut curr_local: Option<String> = locals.pop();
-
         let mut new_env = Environment::extend_environment(outer);
 
-        while curr_local.is_some() {
-            let curr: String = curr_local.expect("No locals");
-            new_env.set(curr, Object::Literal(Literal::UnitLiteral)); // Initialise to default Unit Literal Values
-            curr_local = locals.pop();
-        }
-
+        new_env.insert_locals(locals);
         *env = Box::new(new_env);
+
         // TODO: Check for function declarations here and add to the environment
         let mut statements_clone = self.statements.clone();
-        let mut curr_stmt: Option<SequenceStmt> = statements_clone.pop();
-        while curr_stmt.is_some() {
-            let curr: SequenceStmt = curr_stmt.expect("No block statements?"); // current statement
-            match curr.clone() {
-                SequenceStmt::Stmt(s) => {
-                    instr_stack.push(AgendaInstrs::Stmt(s));
-                    instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
-                }
-                SequenceStmt::Block(b) => instr_stack.push(AgendaInstrs::Block(b))
-            }
-            curr_stmt = statements_clone.pop();
-        }
-        instr_stack.pop(); // Remove the last pop that was put
+        push_block_stmts_reverse(instr_stack, statements_clone);
     }
 }
 
@@ -526,7 +580,7 @@ impl Evaluate for Expr {
     fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
         match self {
             Expr::IdentifierExpr(name, source_location) => {
-                match env.store.get(name) { // Find identifier in the environment
+                match env.get(name) { // Find identifier in the environment
                     Some(o) => {
                         let obj = o.clone();
                         let value = match obj { // Find identifier in pool
@@ -552,10 +606,6 @@ impl Evaluate for Expr {
             }
             Expr::AssignmentExpr { assignee, value, position } => {}
             Expr::ApplicationExpr { is_primitive, callee, arguments, position } => {
-                // Put the arguments on the agenda (backwards)
-                // Store the previous environment
-                // Find the function in the function list (ast)
-                // Create new environment by binding the parameters
                 let arity = arguments.len();
                 if is_primitive.is_some() {
                     match is_primitive.unwrap() {

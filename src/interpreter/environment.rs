@@ -87,4 +87,28 @@ impl  Environment {
             curr_stmt = top_level_clone.list.pop();
         }
     }
+
+    pub fn insert_locals(&mut self, locals: Vec<String>) {
+        let mut locals_clone = locals.clone();
+        let mut curr_local: Option<String> = locals_clone.pop();
+
+        while curr_local.is_some() { // Declare the locals
+            let curr: String = curr_local.expect("No locals");
+            self.set(curr, Object::Literal(Literal::UnitLiteral)); // Initialise to default Unit Literal Values
+            curr_local = locals_clone.pop();
+        }
+    }
+
+    pub fn bind_parameters(&mut self, params: Vec<String>, args: Vec<Literal>) {
+        let mut params_clone = params.clone();
+        let mut curr_param_name: Option<String> = params_clone.pop();
+        let mut i = 0;
+        while curr_param_name.is_some() { // Bind passed values to the function parameters
+            let curr: String = curr_param_name.expect("No params");
+            let value_passed = args.get(i).expect("No value passed to a function that requires one?");
+            self.set(curr, Object::Literal(value_passed.clone()));
+            i = i + 1;
+            curr_param_name = params_clone.pop();
+        }
+    }
 }
