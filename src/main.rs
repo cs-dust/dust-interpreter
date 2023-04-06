@@ -8,6 +8,7 @@ mod parser;
 mod test;
 
 fn main() {
+    let source = fs::read_to_string("examples/expression_example.rs").expect("Unable to read file");
     // let source = fs::read_to_string("./examples/expression_example.rs").expect("Unable to read file");
     let source = fs::read_to_string("./examples/if_else_example.rs").expect("Unable to read file");
     println!("Parsing...\n");
@@ -16,7 +17,6 @@ fn main() {
         println!("Program has no executable units. To compile your program, please add a function.");
         process::exit(0);
     }
-     //println!("{:#?}", ast);
-    //interpreter::run(&mut ast);
+    //println!("{:#?}", ast);
     test::run(&mut ast);
 }
