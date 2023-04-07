@@ -516,37 +516,24 @@ impl Evaluate for AgendaInstrs {
                         }
                     },
                     Instructions::Branch_i(br) => {
-                        // let mut pred = stash.pop().expect("Predicate not found in stash");
-                        //
-                        // // Pop the consequent and alternative from instruction stack
-                        // let mut cons = instr_stack.pop().expect("Consequent not found in instruction stack");
-                        // let mut alt = instr_stack.pop().expect("Alternative not found in instruction stack");
-                        //
-                        // // Evaluate the appropriate branch based on the predicate value
-                        // if pred {
-                        //     alt.evaluate(instr_stack, stash, env);
-                        // } else {
-                        //     cons.evaluate(instr_stack, stash, env);
-                        // }
-                        // Evaluate the predicate on the stash
-                        let pred = instr_stack.pop().expect("Expected predicate on instruction stack");
-                        pred.evaluate(instr_stack, stash, env);
+                        let mut cons = br.cons.clone();
+                        let mut alt = br.alt.clone();
 
-                        // Get value of the predicate from the stash
                         let pred_val = stash.pop().expect("Expected predicate value on stash");
 
                         // Check value of the predicate and evaluate the consequent or alternative block accordingly
                         match pred_val {
-                            Some(Literal::BoolLiteral(true)) => {
-                                br.cons.evaluate(instr_stack, stash, env);
-                            }
-                            Some(Literal::BoolLiteral(false)) => {
-                                br.alt.evaluate(instr_stack, stash, env);
-                            }
-                            _ => {
-                                // Error: Predicate must evaluate to a boolean value
-                                panic!("Predicate in if-else statement must evaluate to a boolean value");
-                            }
+                            Literal::BoolLiteral(b) => {
+                                if b {
+                                    instr_stack.push(AgendaInstrs::Expr(cons));
+                                } else {
+                                    match alt {
+                                        Some(alt_expr) => instr_stack.push(AgendaInstrs::Expr(alt_expr)),
+                                        None => {}
+                                    }
+                                }
+                            },
+                            _ => panic!("Predicate type not supported")
                         }
                     }
                     _ => println!("No instruction?")
@@ -590,38 +577,13 @@ impl Evaluate for Stmt {
                 }
             },
             Stmt::IfElseStmt { pred, cons, alt, position } => {
-                // // Push branch tag for consequent
-                // instr_stack.push(AgendaInstrs::Instructions(Instructions::Branch_i(cons.clone())));
-                //
-                // // Push branch tag for alternative
-                // instr_stack.push(AgendaInstrs::Instructions(Instructions::Branch_i(alt.clone())));
-                //
-                // // Evaluate the predicate and push it onto the instruction stack
-                // let current = pred.evaluate(instr_stack, stash, env);
-                //
-                // // Evaluate the branch instruction
-                // match stash.pop() {
-                //     Some(Literal::BoolLiteral(true)) => {
-                //         // Execute consequent branch
-                //         cons.evaluate(instr_stack, stash, env);
-                //     },
-                //     Some(Literal::BoolLiteral(false)) => {
-                //         // Execute alternative branch
-                //         alt.evaluate(instr_stack, stash, env);
-                //     },
-                //     _ => {
-                //         // Handle error case
-                //         println!("Predicate did not return a boolean value");
-                //     }
-                // }
                 let mut br = Branch_i {
                     cons: cons.clone(),
                     alt: alt.clone(),
                 };
+                instr_stack.push(AgendaInstrs::Instructions(Instructions::Branch_i(br)));
                 // Push predicate as an expression onto instruction stack
                 instr_stack.push(AgendaInstrs::Expr(pred.clone()));
-                // Push the branch data structure onto instruction stack
-                instr_stack.push(AgendaInstrs::Instructions(Instructions::Branch_i(br)));
             },
             // Stmt::ForLoopStmt { init, pred, update, body, position } => {
             //     // Evaluate initialization expression
