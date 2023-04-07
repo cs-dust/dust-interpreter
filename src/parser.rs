@@ -304,27 +304,6 @@ impl OxidoParser {
         ))
     }
 
-    // Process if-else statement node
-    // fn if_else_stmt(input: Node) -> Result<Stmt> {
-    //     let (line, col) = input.as_span().start_pos().line_col();
-    //     let position = SourceLocation { line, col };
-    //
-    //     let mut children = input.into_children();
-    //     let condition = expr(children.next().unwrap())?;
-    //     let then_block = block(children.next().unwrap())?;
-    //     let else_block = match children.next() {
-    //         Some(node) => Some(block(node)?),
-    //         None => None,
-    //     };
-    //
-    //     Ok(Stmt::IfElseStmt {
-    //         pred,
-    //         cons,
-    //         alt,
-    //         position,
-    //     })
-    // }
-
     // Parse if-else statement
     fn if_else_stmt(input: Node) -> Result<Stmt> {
         let (line, col) = input.as_span().start_pos().line_col();

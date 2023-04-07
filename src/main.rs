@@ -4,13 +4,10 @@ use std::fs;
 use std::process;
 
 mod parser;
-//mod interpreter;
-mod test;
+mod interpreter;
 
 fn main() {
-    let source = fs::read_to_string("examples/expression_example.rs").expect("Unable to read file");
-    // let source = fs::read_to_string("./examples/expression_example.rs").expect("Unable to read file");
-    let source = fs::read_to_string("./examples/if_else_example.rs").expect("Unable to read file");
+    let source = fs::read_to_string("examples/if_else_example.rs").expect("Unable to read file");
     println!("Parsing...\n");
     let mut ast = parser::parse(&source).expect("Failed to parse given program");
     if ast.len() < 1 {
@@ -18,5 +15,5 @@ fn main() {
         process::exit(0);
     }
     //println!("{:#?}", ast);
-    test::run(&mut ast);
+    interpreter::run(&mut ast);
 }

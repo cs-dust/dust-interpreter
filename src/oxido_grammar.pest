@@ -49,16 +49,13 @@ expr_stmt = { expr ~ ";" }
 if_else_stmt =
     { "if " ~ expr ~ block ~ ("else " ~ block)? }
 
-// optional_else =
-//     { "else " ~ block? }
-
 while_loop_stmt =
     { "while "~ expr ~ block }
 
 for_loop_stmt =
     { "for " ~ identifier ~ " in " ~ expr ~ block }
 
-expr = { assignment }
+expr = { assignment | equality }
 
 primary = { integer_literal | string_literal | boolean_literal | unit_literal | grouped_expr | block | return_val | identifier }
 
