@@ -44,6 +44,12 @@ struct App_i {
     sym: String
 }
 
+#[derive(Debug, Clone)]
+struct Branch_i {
+    cons: Expr,
+    alt: Option<Expr>,
+}
+
 
 #[derive(Debug, Clone)]
 pub enum Instructions {
@@ -57,8 +63,7 @@ pub enum Instructions {
     Branch,
     Assignment_i(Assignment_i),
     App_i(App_i),
-    JumpIfFalse(usize),
-    Jump(usize)
+    Branch_i(Branch_i),
 }
 
 #[derive(Debug, Clone)]
@@ -510,24 +515,40 @@ impl Evaluate for AgendaInstrs {
                             push_block_stmts_reverse(instr_stack, statements);
                         }
                     },
-                    Instructions::Jump(offset) => {
-                        // Jump to instruction at given offset
-                        println!("in jump");
-                        instr_ptr = *offset;
-                        // println!("{}", instr_ptr)
-                    },
-                    Instructions::JumpIfFalse(offset) => {
-                        // Pop a value from stack and check if it is falsy
-                        println!("in jif");
-                        // check if value popped from stash is equal
-                        if let Some(Literal::BoolLiteral(false)) = stash.pop() {
-                            // If value is falsy, jump to instruction at given offset
-                            instr_ptr += offset;
-                            println!("in jif if")
+                    Instructions::Branch_i(br) => {
+                        // let mut pred = stash.pop().expect("Predicate not found in stash");
+                        //
+                        // // Pop the consequent and alternative from instruction stack
+                        // let mut cons = instr_stack.pop().expect("Consequent not found in instruction stack");
+                        // let mut alt = instr_stack.pop().expect("Alternative not found in instruction stack");
+                        //
+                        // // Evaluate the appropriate branch based on the predicate value
+                        // if pred {
+                        //     alt.evaluate(instr_stack, stash, env);
+                        // } else {
+                        //     cons.evaluate(instr_stack, stash, env);
+                        // }
+                        // Evaluate the predicate on the stash
+                        let pred = instr_stack.pop().expect("Expected predicate on instruction stack");
+                        pred.evaluate(instr_stack, stash, env);
+
+                        // Get value of the predicate from the stash
+                        let pred_val = stash.pop().expect("Expected predicate value on stash");
+
+                        // Check value of the predicate and evaluate the consequent or alternative block accordingly
+                        match pred_val {
+                            Some(Literal::BoolLiteral(true)) => {
+                                br.cons.evaluate(instr_stack, stash, env);
+                            }
+                            Some(Literal::BoolLiteral(false)) => {
+                                br.alt.evaluate(instr_stack, stash, env);
+                            }
+                            _ => {
+                                // Error: Predicate must evaluate to a boolean value
+                                panic!("Predicate in if-else statement must evaluate to a boolean value");
+                            }
                         }
-                        instr_ptr += offset;
-                        // println!("{}", instr_ptr)
-                    },
+                    }
                     _ => println!("No instruction?")
                 }
             }
@@ -535,7 +556,6 @@ impl Evaluate for AgendaInstrs {
         }
     }
 }
-
 
 impl Evaluate for Stmt {
     fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
@@ -570,92 +590,89 @@ impl Evaluate for Stmt {
                 }
             },
             Stmt::IfElseStmt { pred, cons, alt, position } => {
-                // Evaluate predicate
-                let current = pred.evaluate(instr_stack, stash, env);
-
-                // Push a jump instruction onto instruction stack with initial offset of '0' (placeholder)
-                // Skip subsequent 'if' block if predicate is false
-                instr_stack.push(AgendaInstrs::Instructions(Instructions::JumpIfFalse(0)));
-
-                // Evaluate 'if' block
-                cons.evaluate(instr_stack, stash, env);
-
-                // If 'else' block is defined
-                if let Some(alt) = alt {
-                    // Push a jump instruction to skip 'else' block if predicate is true, with placeholder offset of 0
-                    instr_stack.push(AgendaInstrs::Instructions(Instructions::Jump(0)));
-
-                    // Update first jump instruction that was pushed onto instruction stack with current offset
-                    let jump_index = instr_stack.len() - 1;
-                    let jump_offset = instr_stack.len();
-                    // Update corresponding element in instr_stack to jump over 'else' block if pred is true
-                    instr_stack[jump_index] = AgendaInstrs::Instructions(Instructions::JumpIfFalse(jump_offset));
-
-                    // Evaluate 'else' block
-                    alt.evaluate(instr_stack, stash, env);
-
-                    // Update second jump instruction with current offset to ensure correct control flow after 'else' block
-                    // Second jump instruction was pushed onto instruction stack after 'if' block
-                    let second_jump_index = instr_stack.len() - 1;  // Index of jump instruction in instruction stack
-                    let second_jump_offset = instr_stack.len(); // Correct offset to jump to
-                    instr_stack[second_jump_index] = AgendaInstrs::Instructions(Instructions::Jump(second_jump_offset));
-                } else {    // No 'else' block defined
-                    // Update jump instruction with current offset
-                    let jump_index = instr_stack.len() - 1;
-                    let jump_offset = instr_stack.len();
-                    instr_stack[jump_index] = AgendaInstrs::Instructions(Instructions::JumpIfFalse(jump_offset));
-                }
+                // // Push branch tag for consequent
+                // instr_stack.push(AgendaInstrs::Instructions(Instructions::Branch_i(cons.clone())));
+                //
+                // // Push branch tag for alternative
+                // instr_stack.push(AgendaInstrs::Instructions(Instructions::Branch_i(alt.clone())));
+                //
+                // // Evaluate the predicate and push it onto the instruction stack
+                // let current = pred.evaluate(instr_stack, stash, env);
+                //
+                // // Evaluate the branch instruction
+                // match stash.pop() {
+                //     Some(Literal::BoolLiteral(true)) => {
+                //         // Execute consequent branch
+                //         cons.evaluate(instr_stack, stash, env);
+                //     },
+                //     Some(Literal::BoolLiteral(false)) => {
+                //         // Execute alternative branch
+                //         alt.evaluate(instr_stack, stash, env);
+                //     },
+                //     _ => {
+                //         // Handle error case
+                //         println!("Predicate did not return a boolean value");
+                //     }
+                // }
+                let mut br = Branch_i {
+                    cons: cons.clone(),
+                    alt: alt.clone(),
+                };
+                // Push predicate as an expression onto instruction stack
+                instr_stack.push(AgendaInstrs::Expr(pred.clone()));
+                // Push the branch data structure onto instruction stack
+                instr_stack.push(AgendaInstrs::Instructions(Instructions::Branch_i(br)));
             },
-            Stmt::ForLoopStmt { init, pred, update, body, position } => {
-                // Evaluate initialization expression
-                init.evaluate(instr_stack, stash, env);
-
-                // Remember the jump offset for jump instruction at end of loop
-                let loop_start = instr_stack.len() - 1;
-
-                // Evaluate loop predicate
-                let current = pred.evaluate(instr_stack, stash, env);
-
-                // Push a jump instruction to skip loop if predicate is false
-                instr_stack.push(AgendaInstrs::Instructions(Instructions::JumpIfFalse(0)));
-
-                // Evaluate loop body
-                body.evaluate(instr_stack, stash, env);
-
-                // Evaluate update expression
-                update.evaluate(instr_stack, stash, env);
-
-                // Push jump instruction to jump back to beginning of loop
-                instr_stack.push(AgendaInstrs::Instructions(Instructions::Jump(loop_start)));
-
-                // Update JumpIfFalse instruction to jump to the end of the loop
-                let loop_end = instr_stack.len();
-                let jump_index = loop_start + 1;
-                let jump_offset = loop_end - jump_index;
-                instr_stack[jump_index] = AgendaInstrs::Instructions(Instructions::JumpIfFalse(jump_offset));
-            },
-            Stmt::WhileLoopStmt { pred, body, position } => {
-                // Evaluate predicate
-                let current = pred.evaluate(instr_stack, stash, env);
-
-                // Push jump instruction to skip loop if predicate is false
-                instr_stack.push(AgendaInstrs::Instructions(Instructions::JumpIfFalse(0)));
-
-                // Remember the jump offset for jump instruction at end of loop
-                let loop_start = instr_stack.len() - 1;
-
-                // Evaluate loop body
-                body.evaluate(instr_stack, stash, env);
-
-                // Push jump instruction to jump back to beginning of loop
-                instr_stack.push(AgendaInstrs::Instructions(Instructions::Jump(loop_start)));
-
-                // Update JumpIfFalse instruction to jump to the end of the loop
-                let loop_end = instr_stack.len();
-                let jump_index = loop_start + 1;
-                let jump_offset = loop_end - jump_index;
-                instr_stack[jump_index] = AgendaInstrs::Instructions(Instructions::JumpIfFalse(jump_offset));
-            }
+            // Stmt::ForLoopStmt { init, pred, update, body, position } => {
+            //     // Evaluate initialization expression
+            //     init.evaluate(instr_stack, stash, env);
+            //
+            //     // Remember the jump offset for jump instruction at end of loop
+            //     let loop_start = instr_stack.len() - 1;
+            //
+            //     // Evaluate loop predicate
+            //     let current = pred.evaluate(instr_stack, stash, env);
+            //
+            //     // Push a jump instruction to skip loop if predicate is false
+            //     instr_stack.push(AgendaInstrs::Instructions(Instructions::JumpIfFalse(0)));
+            //
+            //     // Evaluate loop body
+            //     body.evaluate(instr_stack, stash, env);
+            //
+            //     // Evaluate update expression
+            //     update.evaluate(instr_stack, stash, env);
+            //
+            //     // Push jump instruction to jump back to beginning of loop
+            //     instr_stack.push(AgendaInstrs::Instructions(Instructions::Jump(loop_start)));
+            //
+            //     // Update JumpIfFalse instruction to jump to the end of the loop
+            //     let loop_end = instr_stack.len();
+            //     let jump_index = loop_start + 1;
+            //     let jump_offset = loop_end - jump_index;
+            //     instr_stack[jump_index] = AgendaInstrs::Instructions(Instructions::JumpIfFalse(jump_offset));
+            // },
+            // Stmt::WhileLoopStmt { pred, body, position } => {
+            //     // Evaluate predicate
+            //     let current = pred.evaluate(instr_stack, stash, env);
+            //
+            //     // Push jump instruction to skip loop if predicate is false
+            //     instr_stack.push(AgendaInstrs::Instructions(Instructions::JumpIfFalse(0)));
+            //
+            //     // Remember the jump offset for jump instruction at end of loop
+            //     let loop_start = instr_stack.len() - 1;
+            //
+            //     // Evaluate loop body
+            //     body.evaluate(instr_stack, stash, env);
+            //
+            //     // Push jump instruction to jump back to beginning of loop
+            //     instr_stack.push(AgendaInstrs::Instructions(Instructions::Jump(loop_start)));
+            //
+            //     // Update JumpIfFalse instruction to jump to the end of the loop
+            //     let loop_end = instr_stack.len();
+            //     let jump_index = loop_start + 1;
+            //     let jump_offset = loop_end - jump_index;
+            //     instr_stack[jump_index] = AgendaInstrs::Instructions(Instructions::JumpIfFalse(jump_offset));
+            // }
             _ => {
                 println!("Not a function");
             }
