@@ -50,6 +50,11 @@ struct Branch_i {
     alt: Option<Expr>,
 }
 
+#[derive(Debug, Clone)]
+struct Loop_i {
+    body: Expr,
+}
+
 
 #[derive(Debug, Clone)]
 pub enum Instructions {
@@ -64,6 +69,7 @@ pub enum Instructions {
     Assignment_i(Assignment_i),
     App_i(App_i),
     Branch_i(Branch_i),
+    Loop_i(Loop_i),
 }
 
 #[derive(Debug, Clone)]
@@ -525,15 +531,39 @@ impl Evaluate for AgendaInstrs {
                         match pred_val {
                             Literal::BoolLiteral(b) => {
                                 if b {
+                                    // Push cons expression to instruction stack
                                     instr_stack.push(AgendaInstrs::Expr(cons));
                                 } else {
                                     match alt {
+                                        // Push alt expression to instruction stack
                                         Some(alt_expr) => instr_stack.push(AgendaInstrs::Expr(alt_expr)),
+                                        // Do nothing if no alt
                                         None => {}
                                     }
                                 }
                             },
                             _ => panic!("Predicate type not supported")
+                        }
+                    }
+                    Instructions::Loop_i(lp) => {
+                        // let mut body_expr = lp.body.clone();
+                        let pred_val = stash.pop().expect("Expected predicate value on stash");
+
+                        // Check value of predicate
+                        match pred_val {
+                            Literal::BoolLiteral(b) => {
+                                if b {
+                                    println!("in b");
+                                    let mut body_expr = lp.body.clone();
+                                    instr_stack.push(AgendaInstrs::Expr(body_expr));
+                                    // Push Loop_i instruction back onto the instruction stack to continue the loop
+                                    // instr_stack.push(AgendaInstrs::Instructions(Instructions::Loop_i(lp.clone())));
+                                    // stash.push(Literal::BoolLiteral(false))
+                                // } else {
+                                //     instr_stack.pop();
+                                }
+                            },
+                            _=> panic!("Predicate type not supported")
                         }
                     }
                     _ => println!("No instruction?")
@@ -577,64 +607,56 @@ impl Evaluate for Stmt {
                 }
             },
             Stmt::IfElseStmt { pred, cons, alt, position } => {
+                // Create new Branch_i instruction with cloned cons and alt expressions
                 let mut br = Branch_i {
                     cons: cons.clone(),
                     alt: alt.clone(),
                 };
+                // Push Branch_i instruction onto instruction stack
                 instr_stack.push(AgendaInstrs::Instructions(Instructions::Branch_i(br)));
-                // Push predicate as an expression onto instruction stack
+                // Push predicate expression onto instruction stack
                 instr_stack.push(AgendaInstrs::Expr(pred.clone()));
             },
             // Stmt::ForLoopStmt { init, pred, update, body, position } => {
-            //     // Evaluate initialization expression
-            //     init.evaluate(instr_stack, stash, env);
             //
-            //     // Remember the jump offset for jump instruction at end of loop
-            //     let loop_start = instr_stack.len() - 1;
+            //     let init = init.clone(); // Clone the init expression
+            //     let pred = pred.clone(); // Clone the pred expression
+            //     let update = update.clone(); // Clone the update expression
+            //     let body = body.clone(); // Clone the body statement
             //
-            //     // Evaluate loop predicate
-            //     let current = pred.evaluate(instr_stack, stash, env);
+            //     let mut cons = vec![]; // Consequent block
             //
-            //     // Push a jump instruction to skip loop if predicate is false
-            //     instr_stack.push(AgendaInstrs::Instructions(Instructions::JumpIfFalse(0)));
+            //     // If init expression is present, push it onto the consequent block
+            //     if let Some(init_expr) = init {
+            //         cons.push(AgendaInstrs::Expr(init_expr));
+            //     }
             //
-            //     // Evaluate loop body
-            //     body.evaluate(instr_stack, stash, env);
+            //     // Push the update expression, body statement, and pred expression onto the consequent block
+            //     cons.push(AgendaInstrs::Expr(update));
+            //     cons.push(AgendaInstrs::Stmt(body));
+            //     cons.push(AgendaInstrs::Expr(pred));
             //
-            //     // Evaluate update expression
-            //     update.evaluate(instr_stack, stash, env);
+            //     let mut br = Branch_i {
+            //         cons,
+            //         alt: None, // No alternative block for for loop
+            //     };
             //
-            //     // Push jump instruction to jump back to beginning of loop
-            //     instr_stack.push(AgendaInstrs::Instructions(Instructions::Jump(loop_start)));
-            //
-            //     // Update JumpIfFalse instruction to jump to the end of the loop
-            //     let loop_end = instr_stack.len();
-            //     let jump_index = loop_start + 1;
-            //     let jump_offset = loop_end - jump_index;
-            //     instr_stack[jump_index] = AgendaInstrs::Instructions(Instructions::JumpIfFalse(jump_offset));
+            //     // Push the `Branch_i` instruction onto the instruction stack
+            //     instr_stack.push(AgendaInstrs::Instructions(Instructions::Branch_i(br)));
             // },
-            // Stmt::WhileLoopStmt { pred, body, position } => {
-            //     // Evaluate predicate
-            //     let current = pred.evaluate(instr_stack, stash, env);
-            //
-            //     // Push jump instruction to skip loop if predicate is false
-            //     instr_stack.push(AgendaInstrs::Instructions(Instructions::JumpIfFalse(0)));
-            //
-            //     // Remember the jump offset for jump instruction at end of loop
-            //     let loop_start = instr_stack.len() - 1;
-            //
-            //     // Evaluate loop body
-            //     body.evaluate(instr_stack, stash, env);
-            //
-            //     // Push jump instruction to jump back to beginning of loop
-            //     instr_stack.push(AgendaInstrs::Instructions(Instructions::Jump(loop_start)));
-            //
-            //     // Update JumpIfFalse instruction to jump to the end of the loop
-            //     let loop_end = instr_stack.len();
-            //     let jump_index = loop_start + 1;
-            //     let jump_offset = loop_end - jump_index;
-            //     instr_stack[jump_index] = AgendaInstrs::Instructions(Instructions::JumpIfFalse(jump_offset));
-            // }
+            Stmt::WhileLoopStmt { pred, body, position } => {
+                println!("in while loop");
+                // Create new Loop_i instruction with cloned body expressions
+                let mut lp = Loop_i {
+                    body: body.clone(),
+                };
+                // Push Loop_i instruction onto instruction stack
+                instr_stack.push(AgendaInstrs::Instructions(Instructions::Loop_i(lp.clone())));
+                // Push predicate expression onto instruction stack
+                instr_stack.push(AgendaInstrs::Expr(pred.clone()));
+                // Push the predicate value onto the stash
+                // stash.push(Literal::BoolLiteral(true));
+            }
             _ => {
                 println!("Not a function");
             }

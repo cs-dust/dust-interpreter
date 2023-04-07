@@ -60,6 +60,7 @@ impl OxidoParser {
             [static_declaration(stmt)] => stmt,
             [function_declaration(stmt)] => stmt,
             [if_else_stmt(stmt)] => stmt, // New branch for IfElseStmt
+            [while_loop_stmt(stmt)] => stmt,
             [declaration(stmt)] => stmt,
         ))
     }
@@ -293,7 +294,7 @@ impl OxidoParser {
             [expr_stmt(stmt)] => stmt,
             [if_else_stmt(stmt)] => stmt,
             // [for_loop_stmt(stmt)] => stmt,
-            // [while_loop_stmt(stmt)] => stmt,
+            [while_loop_stmt(stmt)] => stmt,
         ))
     }
 
@@ -321,6 +322,25 @@ impl OxidoParser {
             pred,
             cons,
             alt,
+            position,
+        })
+    }
+
+    // Parse while-loop statement
+    fn while_loop_stmt(input: Node) -> Result<Stmt> {
+        let (line, col) = input.as_span().start_pos().line_col();
+        let position = SourceLocation { line, col };
+
+        // Match input's children against expected rule sequence
+        let (pred, body) =
+            match_nodes!(input.children();
+            [expr(pred), block(body)] => (pred, body),
+        );
+
+        // Create WhileLoopStmt with parsed values
+        Ok(Stmt::WhileLoopStmt {
+            pred,
+            body,
             position,
         })
     }
