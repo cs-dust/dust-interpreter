@@ -48,6 +48,25 @@ impl  Environment {
         self.store.insert(name, val);
     }
 
+    pub fn set_mut(&mut self, name: &str, val: Object) {
+        println!("Searching and setting");
+        match self.store.get(name) {
+            Some(obj) => {
+                self.set(name.to_string(), val);
+            },
+            None => match self.parent {
+                Some (ref mut parent_env) => {
+                    parent_env.set_mut(name, val);
+                },
+                None => panic!("Value does not exist in environment!")
+            }
+        }
+    }
+
+    pub fn go_to_parent(env: Box<Environment>) -> Option<Box<Environment>> {
+        env.parent
+    }
+
     pub fn get(&mut self, name: &str) -> Option<Object> {
         match self.store.get(name) {
             Some (obj) => Some(obj.clone()),
