@@ -186,7 +186,7 @@ pub enum Stmt {
         init: Expr,
         pred: Expr,
         update: Expr,
-        body: Block,
+        body: Expr,
         position: SourceLocation,
     },
     WhileLoopStmt {

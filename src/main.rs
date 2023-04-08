@@ -14,6 +14,6 @@ fn main() {
         println!("Program has no executable units. To compile your program, please add a function.");
         process::exit(0);
     }
-    //println!("{:#?}", ast);
+    println!("{:#?}", ast);
     interpreter::run(&mut ast);
 }

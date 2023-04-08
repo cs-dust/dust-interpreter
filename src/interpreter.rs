@@ -53,6 +53,7 @@ struct Branch_i {
 #[derive(Debug, Clone)]
 struct Loop_i {
     body: Expr,
+    pred: Expr,
 }
 
 #[derive(Debug, Clone)]
@@ -577,25 +578,46 @@ impl Evaluate for AgendaInstrs {
                         }
                     }
                     Instructions::Loop_i(lp) => {
-                        // let mut body_expr = lp.body.clone();
-                        let pred_val = stash.pop().expect("Expected predicate value on stash");
+                        // Pop stash to get predicate value
+                        // if let Some(pred_val) = stash.pop() {
+                        //     // Check if the predicate value is true
+                        //     if let Literal::BoolLiteral(true) = pred_val {
+                        //         // Push the Loop_i tag back onto the agenda
+                        //         instr_stack.push(AgendaInstrs::Instructions(Instructions::Loop_i(lp.clone())));
+                        //         // Push the predicate expression onto the instruction stack
+                        //         instr_stack.push(AgendaInstrs::Expr(lp.pred.clone()));
+                        //         // Push the POP tag onto the agenda
+                        //         instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
+                        //         // Push the body of the loop onto the instruction stack
+                        //         instr_stack.push(AgendaInstrs::Expr(lp.body.clone()));
+                        //     }
+                        // }
 
-                        // Check value of predicate
+                        let mut body = lp.body.clone();
+                        let mut pred_val = stash.pop().expect("Expected predicate value on stash");
                         match pred_val {
                             Literal::BoolLiteral(b) => {
                                 if b {
-                                    println!("in b");
-                                    let mut body_expr = lp.body.clone();
-                                    instr_stack.push(AgendaInstrs::Expr(body_expr));
-                                    // Push Loop_i instruction back onto the instruction stack to continue the loop
-                                    // instr_stack.push(AgendaInstrs::Instructions(Instructions::Loop_i(lp.clone())));
-                                    // stash.push(Literal::BoolLiteral(false))
-                                // } else {
-                                //     instr_stack.pop();
+                                     // Push Loop_i tag back onto agenda
+                                    instr_stack.push(AgendaInstrs::Instructions(Instructions::Loop_i(lp.clone())));
+
+                                    // Push pred expr onto the instruction stack
+                                    instr_stack.push(AgendaInstrs::Expr(lp.pred.clone()));
+
+                                    // Push POP tag onto the agenda
+                                    instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
+
+                                    // Push body of loop onto the instruction stack
+                                    instr_stack.push(AgendaInstrs::Expr(body));
+
                                 }
                             },
-                            _=> panic!("Predicate type not supported")
+                            _ => {
+                                panic!("Unexpected result");
+                            }
                         }
+
+
                     }
                     _ => println!("No instruction?")
                 }
@@ -638,6 +660,14 @@ impl Evaluate for Stmt {
                 }
             },
             Stmt::IfElseStmt { pred, cons, alt, position } => {
+
+                // // Push predicate expression onto instruction stack
+                // instr_stack.push(AgendaInstrs::Expr(pred.clone()));
+                //
+                // // Push cons and alt expressions onto instruction stack
+                // instr_stack.push(AgendaInstrs::Expr(cons.clone()));
+                // instr_stack.push(AgendaInstrs::Expr(alt.clone()));
+
                 // Create new Branch_i instruction with cloned cons and alt expressions
                 let mut br = Branch_i {
                     cons: cons.clone(),
@@ -645,11 +675,11 @@ impl Evaluate for Stmt {
                 };
                 // Push Branch_i instruction onto instruction stack
                 instr_stack.push(AgendaInstrs::Instructions(Instructions::Branch_i(br)));
-                // Push predicate expression onto instruction stack
+                // // Push predicate expression onto instruction stack
                 instr_stack.push(AgendaInstrs::Expr(pred.clone()));
             },
             // Stmt::ForLoopStmt { init, pred, update, body, position } => {
-            //
+            //     println!("in for loop");
             //     let init = init.clone(); // Clone the init expression
             //     let pred = pred.clone(); // Clone the pred expression
             //     let update = update.clone(); // Clone the update expression
@@ -679,10 +709,13 @@ impl Evaluate for Stmt {
                 println!("in while loop");
                 // Create new Loop_i instruction with cloned body expressions
                 let mut lp = Loop_i {
+                    pred: pred.clone(),
                     body: body.clone(),
                 };
+
                 // Push Loop_i instruction onto instruction stack
                 instr_stack.push(AgendaInstrs::Instructions(Instructions::Loop_i(lp.clone())));
+
                 // Push predicate expression onto instruction stack
                 instr_stack.push(AgendaInstrs::Expr(pred.clone()));
                 // Push the predicate value onto the stash
