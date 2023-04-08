@@ -55,6 +55,16 @@ struct Loop_i {
     body: Expr,
 }
 
+#[derive(Debug, Clone)]
+struct Overwrite {
+    sym: String,
+    expr: Expr
+}
+
+#[derive(Debug, Clone)]
+struct Overwrite_i {
+    sym: String
+}
 
 #[derive(Debug, Clone)]
 pub enum Instructions {
@@ -70,6 +80,8 @@ pub enum Instructions {
     App_i(App_i),
     Branch_i(Branch_i),
     Loop_i(Loop_i),
+    Overwrite(Overwrite),
+    Overwrite_i(Overwrite_i)
 }
 
 #[derive(Debug, Clone)]
@@ -81,7 +93,7 @@ pub enum AgendaInstrs {
     Literal(Literal),
     Expr(Expr),
     PrimitiveOperation(PrimitiveOperation),
-    Environment(Environment)
+    Environment(Box<Environment>)
 }
 
 
@@ -399,8 +411,10 @@ impl Evaluate for AgendaInstrs {
             AgendaInstrs::Literal(lit) => lit.evaluate(instr_stack, stash, env),
             AgendaInstrs::Expr(expr) => expr.evaluate(instr_stack, stash, env),
             AgendaInstrs::Environment(ref e) => { // Restore environment
+                println!("Restoring");
                 let mut old_env = e.clone();
-                *env = Box::new(old_env); // Restore
+                *env = old_env; // Restore
+                println!("{:#?}", env.clone());
             }
             AgendaInstrs::Instructions(instr) => {
                 // let mut instr_ptr = 0;
@@ -420,6 +434,13 @@ impl Evaluate for AgendaInstrs {
                         instr_stack.push(AgendaInstrs::Instructions(Instructions::Assignment_i(a)));
                         instr_stack.push(AgendaInstrs::Expr(assn.clone().expr));
                     },
+                    Instructions::Overwrite(ovr) => {
+                        let o = Overwrite_i {
+                            sym: ovr.clone().sym
+                        };
+                        instr_stack.push(AgendaInstrs::Instructions(Instructions::Overwrite_i(o)));
+                        instr_stack.push(AgendaInstrs::Expr(ovr.clone().expr));
+                    }
                     Instructions::UnOp(unop) => {
                         let operand = stash.pop();
                         let operator = unop.sym;
@@ -445,6 +466,7 @@ impl Evaluate for AgendaInstrs {
                         // Nothing
                     },
                     Instructions::Assignment_i(assn) => {
+                        //println!("{:#?}", stash.peek());
                         let v = match stash.peek() {
                             Some(value) => value.clone(),
                             None => panic!("Why is nothing in the stash??")
@@ -452,6 +474,15 @@ impl Evaluate for AgendaInstrs {
                         // Assign the value to the name in the environment
                         let nam = assn.clone().sym;
                         env.set(nam, Object::Literal(v));
+                    },
+                    Instructions::Overwrite_i(ovr) => {
+                        let v = match stash.peek() {
+                            Some(value) => value.clone(),
+                            None => panic!("Why is nothing in the stash??")
+                        };
+                        // Overwrite name in the environment
+                        let nam = ovr.clone().sym;
+                        env.set_mut(nam.as_str(), Object::Literal(v));
                     },
                     Instructions::App_i(app) => {
                         let arity= app.arity;
@@ -488,7 +519,7 @@ impl Evaluate for AgendaInstrs {
                                 instr_stack.pop();
                             } else {
                                 let old_env = env.clone();
-                                instr_stack.push(AgendaInstrs::Environment(*old_env)); // Put environment on agenda
+                                instr_stack.push(AgendaInstrs::Environment(old_env)); // Put environment on agenda EDITED
                                 instr_stack.push(AgendaInstrs::Instructions(Instructions::Mark));
                             }
                             let func_stmt = match env.get(&*app.sym.clone()) {
@@ -669,7 +700,7 @@ impl Evaluate for Block {
         let outer = env.clone();
         let old_env = env.clone();
         if instr_stack.len() != 0 {
-            instr_stack.push(AgendaInstrs::Environment(*old_env)); // Put environment on agenda
+            instr_stack.push(AgendaInstrs::Environment(old_env)); // Put environment on agenda EDITED
         }
 
         instr_stack.push(AgendaInstrs::Instructions(Instructions::Mark)); // Drop mark on agenda
@@ -714,7 +745,17 @@ impl Evaluate for Expr {
                 let prim_op = *primitive_op.clone();
                 instr_stack.push(AgendaInstrs::PrimitiveOperation(prim_op));
             }
-            Expr::AssignmentExpr { assignee, value, position } => {}
+            Expr::AssignmentExpr { assignee, value, position } => {
+                let name = get_name(assignee);
+                let expr = *value.clone();
+                instr_stack.push(AgendaInstrs::Literal(Literal::UnitLiteral));
+                instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
+                let o = Overwrite {
+                    sym: name,
+                    expr: expr
+                };
+                instr_stack.push(AgendaInstrs::Instructions(Instructions::Overwrite(o)));
+            }
             Expr::ApplicationExpr { is_primitive, callee, arguments, position } => {
                 let arity = arguments.len();
                 if is_primitive.is_some() {

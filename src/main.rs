@@ -7,7 +7,7 @@ mod parser;
 mod interpreter;
 
 fn main() {
-    let source = fs::read_to_string("examples/while_loop_example.rs").expect("Unable to read file");
+    let source = fs::read_to_string("examples/function_return_addition.rs").expect("Unable to read file");
     println!("Parsing...\n");
     let mut ast = parser::parse(&source).expect("Failed to parse given program");
     if ast.len() < 1 {
