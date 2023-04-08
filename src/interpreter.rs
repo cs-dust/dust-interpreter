@@ -1,4 +1,5 @@
 mod environment;
+mod new_heap;
 use std::borrow::Borrow;
 use crate::interpreter::environment::Environment;
 use environment::Object;
@@ -14,6 +15,7 @@ use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UnitLi
 use std::ops::Deref;
 use std::process::id;
 use std::string::String;
+use crate::interpreter::new_heap::Heap;
 use crate::parser::ast::Stmt::FuncDeclaration;
 
 #[derive(Debug, Clone)]
@@ -185,12 +187,13 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
     global_env.insert_top_level(functions.clone()); // Insert top level declarations into environment
     global_env.insert_top_level(statics.clone());
     let mut E = Box::new(global_env);
-
+    let mut H = Heap::new();
+    H.clear_heap();
     A.push(AgendaInstrs::Stmt(functions.list[main_idx].clone())); // We start with main
     // TODO: Check if we should have a step limit
     while !A.is_empty() {
         let curr: AgendaInstrs = A.pop().expect("Literally impossible but ok");
-        curr.evaluate(&mut A, &mut S, &mut E); // Borrowing w/ Mutable Reference
+        curr.evaluate(&mut A, &mut S, &mut E, &mut H); // Borrowing w/ Mutable Reference
         //println!("{:#?}", curr.clone());
     }
     if S.is_empty() || S.len() > 1 {
@@ -398,19 +401,19 @@ impl Stack<AgendaInstrs> for Vec<AgendaInstrs> {
 * Evaluation
 ***************************************************************************************************/
 pub trait Evaluate {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>);
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>, heap: &mut Heap);
 }
 
 impl Evaluate for AgendaInstrs {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>, heap: &mut Heap) {
         let mut instr_ptr = instr_stack.len();
         match self {
-            AgendaInstrs::Stmt(stmt) => stmt.evaluate(instr_stack, stash, env),
+            AgendaInstrs::Stmt(stmt) => stmt.evaluate(instr_stack, stash, env, heap),
             // AgendaInstrs::SequenceStmt(stmts) => stmts.evaluate(instr_stack, stash),
-            AgendaInstrs::PrimitiveOperation(prim_op) => prim_op.evaluate(instr_stack, stash, env),
-            AgendaInstrs::Block(blk) => blk.evaluate(instr_stack, stash, env),
-            AgendaInstrs::Literal(lit) => lit.evaluate(instr_stack, stash, env),
-            AgendaInstrs::Expr(expr) => expr.evaluate(instr_stack, stash, env),
+            AgendaInstrs::PrimitiveOperation(prim_op) => prim_op.evaluate(instr_stack, stash, env, heap),
+            AgendaInstrs::Block(blk) => blk.evaluate(instr_stack, stash, env, heap),
+            AgendaInstrs::Literal(lit) => lit.evaluate(instr_stack, stash, env, heap),
+            AgendaInstrs::Expr(expr) => expr.evaluate(instr_stack, stash, env, heap),
             AgendaInstrs::Environment(ref e) => { // Restore environment
                 println!("Restoring");
                 // let mut old_env = e.clone();
@@ -620,7 +623,7 @@ impl Evaluate for AgendaInstrs {
 }
 
 impl Evaluate for Stmt {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>, heap: &mut Heap) {
         match self {
             Stmt::LetStmt {name, is_mutable, annotation, value, position} => match value {
                 Some(expr) => {
@@ -721,7 +724,7 @@ impl Evaluate for Stmt {
 }
 
 impl Evaluate for Block {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>, heap: &mut Heap) {
         let outer = env.clone();
         let old_env = env.clone();
         if instr_stack.len() != 0 {
@@ -743,7 +746,7 @@ impl Evaluate for Block {
 }
 
 impl Evaluate for Expr {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>, heap: &mut Heap) {
         match self {
             Expr::IdentifierExpr(name, source_location) => {
                 match env.get(name) { // Find identifier in the environment
@@ -761,10 +764,10 @@ impl Evaluate for Expr {
                 }
             }
             Expr::LiteralExpr(literal_value, source_location) => {
-                literal_value.evaluate(instr_stack, stash, env);
+                literal_value.evaluate(instr_stack, stash, env, heap);
             }
             Expr::BlockExpr(block, source_location) => { // Block expr need to have a return stmt
-                block.evaluate(instr_stack, stash, env);
+                block.evaluate(instr_stack, stash, env, heap);
             }
             Expr::PrimitiveOperationExpr(primitive_op, source_location) => {
                 let prim_op = *primitive_op.clone();
@@ -835,7 +838,7 @@ impl Evaluate for Expr {
 }
 
 impl Evaluate for PrimitiveOperation {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>, heap: &mut Heap) {
         match self {
             PrimitiveOperation::UnaryOperation { operator, operand } => {
                 let un_operator = UnOp {
@@ -864,7 +867,7 @@ impl Evaluate for PrimitiveOperation {
 }
 
 impl Evaluate for Literal {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>, heap: &mut Heap) {
         match self {
             IntLiteral(n) => stash.push(IntLiteral(*n)), // Need to  extract the literal when using it
             BoolLiteral(b) => stash.push(BoolLiteral(*b)),

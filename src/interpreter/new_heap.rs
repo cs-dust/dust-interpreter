@@ -43,7 +43,7 @@ impl Heap {
         return self.heap[addr];
     }
 
-    fn expand_heap(&self) -> () {
+    fn expand_heap(&mut self) -> () {
         for i in 0..self.size {
             self.heap.push(((i + self.size + 1) as u128) << NEXT_NODE_OFFSET);
         }
@@ -54,7 +54,7 @@ impl Heap {
     pub fn push_string(&self, string:String) -> usize {
         return 0;
     }
-    pub fn push_integer(&self, integer:u64) -> usize {
+    pub fn push_integer(&mut self, integer:u64) -> usize {
         if self.free_space <= 2 {
             self.expand_heap();
         }
@@ -83,15 +83,13 @@ impl Heap {
     pub fn get_integer(&self, addr:usize) -> u64 {
         let header_node = self.get_node_from_addr(addr);
         let data_addr = Heap::get_next_node(header_node);
-        let data_node = self.get_node_from_addr(addr);
-        return 0;
+        let data_node = self.get_node_from_addr(data_addr);
+        return Heap::get_data_payload(data_node);
     }
     pub fn get_boolean(&self, addr:usize) -> bool {
         return addr == 0;
     }
-    pub fn free_space(&self, addr:usize) -> bool {
-        return false;
-    }
+    pub fn free_space(&self, addr:usize)  {}
     pub fn new() -> Heap {
         return Heap {
             heap: Vec::new(),
@@ -109,4 +107,24 @@ impl Heap {
             self.heap.push(((i as u128) + 1) << NEXT_NODE_OFFSET);
         }
     }
+}
+
+#[test]
+fn check_heap_integer() {
+    let mut H = Heap::new();
+    H.clear_heap();
+    let ptr = H.push_integer(35);
+    println!("{}", ptr);
+    let value = H.get_integer(ptr);
+    println!("{}", value);
+}
+
+#[test]
+fn check_heap_bool() {
+    let mut H = Heap::new();
+    H.clear_heap();
+    let ptr = H.push_boolean(true);
+    println!("{}", ptr);
+    let value = H.get_boolean(ptr);
+    println!("{}", value);
 }
