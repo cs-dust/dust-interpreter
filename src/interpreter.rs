@@ -54,6 +54,7 @@ struct Branch_i {
 struct Loop_i {
     body: Expr,
     pred: Expr,
+    first: bool
 }
 
 #[derive(Debug, Clone)]
@@ -415,7 +416,7 @@ impl Evaluate for AgendaInstrs {
                 println!("Restoring");
                 let mut old_env = e.clone();
                 *env = old_env; // Restore
-                println!("{:#?}", env.clone());
+                //println!("{:#?}", env.clone());
             }
             AgendaInstrs::Instructions(instr) => {
                 // let mut instr_ptr = 0;
@@ -542,7 +543,7 @@ impl Evaluate for AgendaInstrs {
                             let mut locals = scan_out_block_declarations(&fun_body);
 
                             let outer = env.clone();
-                            let mut new_env = Environment::extend_environment(outer);
+                            let mut new_env = Environment::extend_environment( outer);
 
                             new_env.bind_parameters(param_names, args);
                             new_env.insert_locals(locals);
@@ -592,14 +593,19 @@ impl Evaluate for AgendaInstrs {
                         //         instr_stack.push(AgendaInstrs::Expr(lp.body.clone()));
                         //     }
                         // }
-
+                        let mut first = lp.first.clone();
                         let mut body = lp.body.clone();
                         let mut pred_val = stash.pop().expect("Expected predicate value on stash");
                         match pred_val {
                             Literal::BoolLiteral(b) => {
                                 if b {
                                      // Push Loop_i tag back onto agenda
-                                    instr_stack.push(AgendaInstrs::Instructions(Instructions::Loop_i(lp.clone())));
+                                    let l = Loop_i {
+                                        body: lp.body.clone(),
+                                        pred: lp.pred.clone(),
+                                        first: false
+                                    };
+                                    instr_stack.push(AgendaInstrs::Instructions(Instructions::Loop_i(l)));
 
                                     // Push pred expr onto the instruction stack
                                     instr_stack.push(AgendaInstrs::Expr(lp.pred.clone()));
@@ -608,8 +614,18 @@ impl Evaluate for AgendaInstrs {
                                     instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
 
                                     // Push body of loop onto the instruction stack
-                                    instr_stack.push(AgendaInstrs::Expr(body));
-
+                                    if first {
+                                        instr_stack.push(AgendaInstrs::Expr(body));
+                                    } else {
+                                        let mut stmts;
+                                        match lp.body.clone() {
+                                            Expr::BlockExpr(b, source_location) => {
+                                                stmts = b.statements.clone();
+                                            }
+                                            _ => panic!("While loop needs a block")
+                                        }
+                                        push_block_stmts_reverse(instr_stack, stmts);
+                                    }
                                 }
                             },
                             _ => {
@@ -711,6 +727,7 @@ impl Evaluate for Stmt {
                 let mut lp = Loop_i {
                     pred: pred.clone(),
                     body: body.clone(),
+                    first: true
                 };
 
                 // Push Loop_i instruction onto instruction stack
