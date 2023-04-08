@@ -63,6 +63,10 @@ impl  Environment {
         }
     }
 
+    pub fn go_to_parent(env: Box<Environment>) -> Option<Box<Environment>> {
+        env.parent
+    }
+
     pub fn get(&mut self, name: &str) -> Option<Object> {
         match self.store.get(name) {
             Some (obj) => Some(obj.clone()),
