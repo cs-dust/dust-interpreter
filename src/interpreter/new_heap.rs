@@ -1,20 +1,20 @@
 use crate::parser::ast::Literal;
-use crate::parser::ast::Literal::{BoolLiteral, UnitLiteral, IntLiteral, StringLiteral};
+use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UnitLiteral};
 
-const HEAP_INIT_SIZE:usize = 1024;
+const HEAP_INIT_SIZE: usize = 1024;
 
-const NUM_LITERAL_TYPES:usize = 3;
+const NUM_LITERAL_TYPES: usize = 3;
 
-const STRING_TYPE:u8 = 0b0000_0000;
-const INTEGER_TYPE:u8 = 0b0000_0001;
-const FALSE_TYPE:u8 = 0b0000_0010;
-const TRUE_TYPE:u8 = 0b0000_0011;
-const UNDEFINED_TYPE:u8 = 0b0000_0100;
+const STRING_TYPE: u8 = 0b0000_0000;
+const INTEGER_TYPE: u8 = 0b0000_0001;
+const FALSE_TYPE: u8 = 0b0000_0010;
+const TRUE_TYPE: u8 = 0b0000_0011;
+const UNDEFINED_TYPE: u8 = 0b0000_0100;
 
-const DATA_TYPE_OFFSET:u8 = 0;
-const PAYLOAD_OFFSET:u8 = 0;
-const LENGTH_OFFSET:u8 = 64;
-const NEXT_NODE_OFFSET:u8 = 96;
+const DATA_TYPE_OFFSET: u8 = 0;
+const PAYLOAD_OFFSET: u8 = 0;
+const LENGTH_OFFSET: u8 = 64;
+const NEXT_NODE_OFFSET: u8 = 96;
 
 pub struct Heap {
     heap: Vec<u128>,
@@ -24,53 +24,75 @@ pub struct Heap {
 }
 
 impl Heap {
-    fn create_header_node(data_type:u8, data_length:u32, next_node:usize) -> u128 {
-        let mut header:u128 = 0;
+    fn create_header_node(data_type: u8, data_length: u32, next_node: usize) -> u128 {
+        let mut header: u128 = 0;
         header |= (data_type as u128) << DATA_TYPE_OFFSET;
         header |= (data_length as u128) << LENGTH_OFFSET;
         header |= ((next_node as u32) as u128) << NEXT_NODE_OFFSET;
         return header;
     }
-    fn create_data_node(payload:u64, remaining_data:u32, next_node:usize) -> u128 {
-        let mut data_node:u128 = 0;
+    fn create_data_node(payload: u64, remaining_data: u32, next_node: usize) -> u128 {
+        let mut data_node: u128 = 0;
         data_node |= (payload as u128) << PAYLOAD_OFFSET;
         data_node |= (remaining_data as u128) << LENGTH_OFFSET;
         data_node |= ((next_node as u32) as u128) << NEXT_NODE_OFFSET;
         return data_node;
     }
-    fn get_next_node(header:u128) -> usize {
+    fn get_next_node(header: u128) -> usize {
         return ((header >> NEXT_NODE_OFFSET) & u32::MAX as u128) as usize;
     }
-    fn get_data_length(node:u128) -> u32 {
+    fn get_data_length(node: u128) -> u32 {
         return ((node >> LENGTH_OFFSET) & (u32::MAX as u128)) as u32;
     }
-    fn get_data_type(node:u128) -> u8 {
+    fn get_data_type(node: u128) -> u8 {
         return ((node >> DATA_TYPE_OFFSET) & (u8::MAX as u128)) as u8;
     }
-    fn get_data_payload(data:u128) -> u64 {
+    fn get_data_payload(data: u128) -> u64 {
         return (data & (u64::MAX as u128)) as u64;
     }
-    fn get_node_from_addr(&self, addr:usize) -> u128 {
+    fn get_node_from_addr(&self, addr: usize) -> u128 {
         return self.heap[addr];
     }
 
     fn expand_heap(&mut self) -> () {
         for i in 0..self.size {
-            self.heap.push(((i + self.size + 1) as u128) << NEXT_NODE_OFFSET);
+            self.heap
+                .push(((i + self.size + 1) as u128) << NEXT_NODE_OFFSET);
         }
         self.free_space += self.size;
         self.size *= 2;
         println!("new heap size: {}", self.heap.len());
     }
 
-    fn push_string(&mut self, string:String) -> usize {
+    fn push_string(&mut self, string: String) -> usize {
         while self.free_space <= string.len() + 1 {
             self.expand_heap()
         }
-        return 0;
+        let mut curr_ptr = self.free_pointer;
+        let header_ptr = curr_ptr;
+        let mut curr_node = self.get_node_from_addr(curr_ptr);
+        let mut next_ptr = Heap::get_next_node(curr_node);
+        let mut remaining_data = string.len();
+        let header_node = Heap::create_header_node(STRING_TYPE, remaining_data as u32, next_ptr);
+        self.heap[curr_ptr] = header_node;
+        curr_ptr = next_ptr;
+        remaining_data -= 1;
+        for c in string.as_bytes() {
+            curr_node = self.get_node_from_addr(curr_ptr);
+            next_ptr = Heap::get_next_node(curr_node);
+            let new_node = Heap::create_data_node(*c as u64, remaining_data as u32, next_ptr);
+            self.heap[curr_ptr] = new_node;
+            curr_ptr = next_ptr;
+            if remaining_data > 0 {
+                remaining_data -= 1;
+            } else {
+                break;
+            }
+        }
+        return header_ptr;
     }
-    
-    fn push_integer(&mut self, integer:u64) -> usize {
+
+    fn push_integer(&mut self, integer: u64) -> usize {
         if self.free_space <= 2 {
             self.expand_heap();
         }
@@ -89,22 +111,32 @@ impl Heap {
 
         return first_node_addr;
     }
-    fn push_boolean(&self, boolean:bool) -> usize {
-        return if boolean {1} else {0};
+    fn push_boolean(&self, boolean: bool) -> usize {
+        return if boolean { 1 } else { 0 };
     }
-    fn get_string(&self, addr:usize) -> String {
-        return String::from("Hi");
+    fn get_string(&self, addr: usize) -> String {
+        let header_node = self.get_node_from_addr(addr);
+        let mut next_ptr = Heap::get_next_node(header_node);
+        let mut remaining_data = Heap::get_data_length(header_node);
+        let mut string = String::from("");
+        for _i in 0..remaining_data {
+            let data_node = self.get_node_from_addr(next_ptr);
+            let payload = Heap::get_data_payload(data_node) as u8 as char;
+            string.push(payload);
+            next_ptr = Heap::get_next_node(data_node);
+        }
+        return string;
     }
-    fn get_integer(&self, addr:usize) -> u64 {
+    fn get_integer(&self, addr: usize) -> u64 {
         let header_node = self.get_node_from_addr(addr);
         let data_addr = Heap::get_next_node(header_node);
         let data_node = self.get_node_from_addr(data_addr);
         return Heap::get_data_payload(data_node);
     }
-    fn get_boolean(&self, addr:usize) -> bool {
+    fn get_boolean(&self, addr: usize) -> bool {
         return addr == 1;
     }
-    pub fn heap_push(&mut self, literal:Literal) -> usize {
+    pub fn heap_push(&mut self, literal: Literal) -> usize {
         return match literal {
             Literal::StringLiteral(string) => self.push_string(string),
             Literal::IntLiteral(integer) => self.push_integer(integer as u64),
@@ -112,7 +144,7 @@ impl Heap {
             Literal::UnitLiteral => 2,
         };
     }
-    pub fn heap_get(&self, addr:usize) -> Literal {
+    pub fn heap_get(&self, addr: usize) -> Literal {
         let node = self.get_node_from_addr(addr);
         let data_type = Heap::get_data_type(node);
         return match data_type {
@@ -124,11 +156,11 @@ impl Heap {
             _ => panic!("Invalid data type"),
         };
     }
-    pub fn free_space(&mut self, addr:usize)  {
+    pub fn free_space(&mut self, addr: usize) {
         let node_at_addr = self.get_node_from_addr(addr);
         let data_length = Heap::get_data_length(node_at_addr);
         let mut ptr = addr;
-        for i in 0..data_length {
+        for _ in 0..data_length {
             let node = self.get_node_from_addr(ptr);
             ptr = Heap::get_next_node(node);
         }
@@ -151,9 +183,11 @@ impl Heap {
         self.size = HEAP_INIT_SIZE;
         self.heap.push(Heap::create_header_node(FALSE_TYPE, 0, 1));
         self.heap.push(Heap::create_header_node(TRUE_TYPE, 0, 2));
-        self.heap.push(Heap::create_header_node(UNDEFINED_TYPE, 0, 3));
-        for i in 0..HEAP_INIT_SIZE-NUM_LITERAL_TYPES {
-            self.heap.push(((i as u128) + (NUM_LITERAL_TYPES as u128) + 1) << NEXT_NODE_OFFSET);
+        self.heap
+            .push(Heap::create_header_node(UNDEFINED_TYPE, 0, 3));
+        for i in 0..HEAP_INIT_SIZE - NUM_LITERAL_TYPES {
+            self.heap
+                .push(((i as u128) + (NUM_LITERAL_TYPES as u128) + 1) << NEXT_NODE_OFFSET);
         }
         // for i in 0..HEAP_INIT_SIZE {
         //     println!("{}", Heap::get_next_node(self.get_node_from_addr(i)));
@@ -163,19 +197,19 @@ impl Heap {
 
 #[test]
 fn check_heap_integer() {
-    let mut H = Heap::new();
-    H.clear_heap();
-    let ptr = H.push_integer(35);
-    let value = H.get_integer(ptr);
+    let mut heap = Heap::new();
+    heap.clear_heap();
+    let ptr = heap.push_integer(35);
+    let value = heap.get_integer(ptr);
     assert_eq!(value, 35);
 }
 
 #[test]
 fn check_heap_bool() {
-    let mut H = Heap::new();
-    H.clear_heap();
-    let ptr = H.push_boolean(true);
-    let value = H.get_boolean(ptr);
+    let mut heap = Heap::new();
+    heap.clear_heap();
+    let ptr = heap.push_boolean(true);
+    let value = heap.get_boolean(ptr);
     assert_eq!(value, true);
 }
 
@@ -188,25 +222,30 @@ fn check_push() {
     let int_ptr_2 = heap.heap_push(Literal::IntLiteral(420));
     let bool_ptr_2 = heap.heap_push(Literal::BoolLiteral(true));
     let undefined_ptr = heap.heap_push(Literal::UnitLiteral);
+    let string_ptr = heap.heap_push(Literal::StringLiteral(String::from("Testing")));
     let _int_1 = match heap.heap_get(int_ptr_1) {
         IntLiteral(i) => assert_eq!(i, 69),
-        _ => panic!()
+        _ => panic!(),
     };
     let _int_2 = match heap.heap_get(int_ptr_2) {
         IntLiteral(i) => assert_eq!(i, 420),
-        _ => panic!()
+        _ => panic!(),
     };
     let _bool_1 = match heap.heap_get(bool_ptr_1) {
         BoolLiteral(b) => assert!(!b),
-        _ => panic!()
+        _ => panic!(),
     };
     let _bool_2 = match heap.heap_get(bool_ptr_2) {
         BoolLiteral(b) => assert!(b),
-        _ => panic!()
+        _ => panic!(),
+    };
+    let _string_2 = match heap.heap_get(string_ptr) {
+        StringLiteral(s) => assert_eq!(s, "Testing"),
+        _ => panic!(),
     };
     let _undefined = match heap.heap_get(undefined_ptr) {
         UnitLiteral => assert!(true),
-        _ => panic!()
+        _ => panic!(),
     };
 }
 
@@ -214,11 +253,11 @@ fn check_push() {
 fn check_heap_resize() {
     let mut heap = Heap::new();
     heap.clear_heap();
-    for i in 1..HEAP_INIT_SIZE*4 {
+    for i in 1..HEAP_INIT_SIZE * 4 {
         let ptr = heap.push_integer(i as u64);
     }
-    for i in 1..HEAP_INIT_SIZE*4 {
-        let value = heap.get_integer(2*i+1);
+    for i in 1..HEAP_INIT_SIZE * 4 {
+        let value = heap.get_integer(2 * i + 1);
         assert_eq!(value, (i as u64));
     }
 }
