@@ -107,8 +107,8 @@ impl Heap {
     pub fn heap_push(&mut self, literal:Literal) -> usize {
         return match literal {
             Literal::StringLiteral(string) => self.push_string(string),
-            Literal::IntegerLiteral(integer) => self.push_integer(integer),
-            Literal::BooleanLiteral(boolean) => self.push_boolean(boolean),
+            Literal::IntLiteral(integer) => self.push_integer(integer as u64),
+            Literal::BoolLiteral(boolean) => self.push_boolean(boolean),
             Literal::UnitLiteral => 2,
         };
     }
