@@ -418,6 +418,7 @@ impl Evaluate for AgendaInstrs {
                 println!("Restoring");
                 // let mut old_env = e.clone();
                 // *env = old_env; // Restore
+                // Clear the values in the current env - iterate through the outer env & drop values
                 let with_outer = env.clone();
                 let inner = Environment::go_to_parent(with_outer);
                 match inner.clone() {
@@ -485,7 +486,9 @@ impl Evaluate for AgendaInstrs {
                         };
                         // Assign the value to the name in the environment
                         let nam = assn.clone().sym;
-                        env.set(nam, Object::Literal(v));
+                        let addr = heap.heap_push(v); // TODO: CHECK IF WORKS
+                        env.set(nam, Object::PtrToLiteral(addr)); // Store the address of the value in the heap
+                        //env.set(nam, Object::Literal(v));
                     },
                     Instructions::Overwrite_i(ovr) => {
                         let v = match stash.peek() {
@@ -494,7 +497,9 @@ impl Evaluate for AgendaInstrs {
                         };
                         // Overwrite name in the environment
                         let nam = ovr.clone().sym;
-                        env.set_mut(nam.as_str(), Object::Literal(v));
+                        let addr = heap.heap_push(v); // TODO: CHECK IF WORKS & FREE OLD VALUE
+                        env.set_mut(nam.as_str(), Object::PtrToLiteral(addr));
+                        //env.set_mut(nam.as_str(), Object::Literal(v));
                     },
                     Instructions::App_i(app) => {
                         let arity= app.arity;
@@ -555,8 +560,8 @@ impl Evaluate for AgendaInstrs {
                             let outer = env.clone();
                             let mut new_env = Environment::extend_environment( outer);
 
-                            new_env.bind_parameters(param_names, args);
-                            new_env.insert_locals(locals);
+                            new_env.bind_parameters(param_names, args, heap);
+                            new_env.insert_locals(locals, heap);
                             *env = Box::new(new_env); // Change the current env
 
                             // TODO: Check for function declarations here and add to the environment
@@ -655,14 +660,6 @@ impl Evaluate for Stmt {
                 }
             },
             Stmt::IfElseStmt { pred, cons, alt, position } => {
-
-                // // Push predicate expression onto instruction stack
-                // instr_stack.push(AgendaInstrs::Expr(pred.clone()));
-                //
-                // // Push cons and alt expressions onto instruction stack
-                // instr_stack.push(AgendaInstrs::Expr(cons.clone()));
-                // instr_stack.push(AgendaInstrs::Expr(alt.clone()));
-
                 // Create new Branch_i instruction with cloned cons and alt expressions
                 let mut br = Branch_i {
                     cons: cons.clone(),
@@ -673,33 +670,6 @@ impl Evaluate for Stmt {
                 // // Push predicate expression onto instruction stack
                 instr_stack.push(AgendaInstrs::Expr(pred.clone()));
             },
-            // Stmt::ForLoopStmt { init, pred, update, body, position } => {
-            //     println!("in for loop");
-            //     let init = init.clone(); // Clone the init expression
-            //     let pred = pred.clone(); // Clone the pred expression
-            //     let update = update.clone(); // Clone the update expression
-            //     let body = body.clone(); // Clone the body statement
-            //
-            //     let mut cons = vec![]; // Consequent block
-            //
-            //     // If init expression is present, push it onto the consequent block
-            //     if let Some(init_expr) = init {
-            //         cons.push(AgendaInstrs::Expr(init_expr));
-            //     }
-            //
-            //     // Push the update expression, body statement, and pred expression onto the consequent block
-            //     cons.push(AgendaInstrs::Expr(update));
-            //     cons.push(AgendaInstrs::Stmt(body));
-            //     cons.push(AgendaInstrs::Expr(pred));
-            //
-            //     let mut br = Branch_i {
-            //         cons,
-            //         alt: None, // No alternative block for for loop
-            //     };
-            //
-            //     // Push the `Branch_i` instruction onto the instruction stack
-            //     instr_stack.push(AgendaInstrs::Instructions(Instructions::Branch_i(br)));
-            // },
             Stmt::WhileLoopStmt { pred, body, position } => {
                 println!("in while loop");
                 // Create new Loop_i instruction with cloned body expressions
@@ -736,7 +706,7 @@ impl Evaluate for Block {
         let mut locals = scan_out_block_declarations(self);
         let mut new_env = Environment::extend_environment(outer);
 
-        new_env.insert_locals(locals);
+        new_env.insert_locals(locals, heap);
         *env = Box::new(new_env);
 
         // TODO: Check for function declarations here and add to the environment
@@ -754,6 +724,9 @@ impl Evaluate for Expr {
                         let obj = o.clone();
                         let value = match obj { // Find identifier in pool
                             Object::Literal(lit) => lit.clone(),
+                            Object::PtrToLiteral(addr) => {
+                                heap.heap_get(addr) // TODO CHECK IF HEAP_GET IS UPDATED ALR
+                            }
                             _ => panic!("Identifier expr should point to literal only!")
                         };
                         stash.push(value);
