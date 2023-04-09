@@ -29,6 +29,7 @@ pub enum DataType {
     Func(Vec<LifetimeParameter>, Vec<DataType>, Box<DataType>)
 }
 
+
 #[derive(Debug, Clone)]
 pub enum Literal {
     IntLiteral(i64),

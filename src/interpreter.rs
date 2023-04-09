@@ -420,6 +420,16 @@ impl Evaluate for AgendaInstrs {
                 // *env = old_env; // Restore
                 // Clear the values in the current env - iterate through the outer env & drop values
                 let with_outer = env.clone();
+                for (_, value) in with_outer.store.iter() {
+                    match value {
+                        Object::PtrToLiteral(addr) => {
+                            heap.print_stats();
+                            heap.free_space(*addr);
+                            heap.print_stats();
+                        },
+                        _ => {}
+                    };
+                }
                 let inner = Environment::go_to_parent(with_outer);
                 match inner.clone() {
                     Some(p) => {
@@ -497,6 +507,12 @@ impl Evaluate for AgendaInstrs {
                         };
                         // Overwrite name in the environment
                         let nam = ovr.clone().sym;
+                        // Get the address of where it is currently stored
+                        let old_addr = match env.get(nam.clone().as_str()) {
+                            Some(Object::PtrToLiteral(ptr)) => ptr,
+                            _ => {panic!()}
+                        };
+                        heap.free_space(old_addr);
                         let addr = heap.heap_push(v); // TODO: CHECK IF WORKS & FREE OLD VALUE
                         env.set_mut(nam.as_str(), Object::PtrToLiteral(addr));
                         //env.set_mut(nam.as_str(), Object::Literal(v));
@@ -729,6 +745,9 @@ impl Evaluate for Expr {
                             }
                             _ => panic!("Identifier expr should point to literal only!")
                         };
+                        // Check if this references a String, obtain address 
+                        // If it is a string, push the reference to it onto the stash as well
+                        // Let the current variable point to a unit literal (move has occured)
                         stash.push(value);
                     }
                     None => {

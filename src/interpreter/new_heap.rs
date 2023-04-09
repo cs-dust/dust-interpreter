@@ -137,10 +137,20 @@ impl Heap {
         return addr == 1;
     }
     pub fn heap_push(&mut self, literal: Literal) -> usize {
+        
         return match literal {
-            Literal::StringLiteral(string) => self.push_string(string),
-            Literal::IntLiteral(integer) => self.push_integer(integer as u64),
-            Literal::BoolLiteral(boolean) => self.push_boolean(boolean),
+            Literal::StringLiteral(string) => {
+                println!("Pushed string {}", string);
+                self.push_string(string)
+            },
+            Literal::IntLiteral(integer) => {
+                println!("Pushed int {}", integer);
+                self.push_integer(integer as u64)
+            },
+            Literal::BoolLiteral(boolean) => {
+                println!("Pushed boolean {}", boolean);
+                self.push_boolean(boolean)
+            },
             Literal::UnitLiteral => 2,
         };
     }
@@ -157,6 +167,9 @@ impl Heap {
         };
     }
     pub fn free_space(&mut self, addr: usize) {
+        if addr < 3 {
+            return;
+        }
         let node_at_addr = self.get_node_from_addr(addr);
         let data_length = Heap::get_data_length(node_at_addr);
         let mut ptr = addr;
@@ -166,6 +179,7 @@ impl Heap {
         }
         let new_node = Heap::create_data_node(0, 0, self.free_pointer);
         self.heap[ptr] = new_node;
+        self.free_space += data_length as usize + 1;
         self.free_pointer = addr;
     }
     pub fn new() -> Heap {
@@ -175,6 +189,11 @@ impl Heap {
             free_space: HEAP_INIT_SIZE,
             size: HEAP_INIT_SIZE,
         };
+    }
+    pub fn print_stats(&self) {
+        println!("Free space: {}", self.free_space);
+        println!("Total size: {}", self.size);
+        println!("Free pointer: {}", self.free_pointer);
     }
     pub fn clear_heap(&mut self) {
         self.heap.clear();

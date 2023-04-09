@@ -3,6 +3,7 @@ fn main() {
     while x > 0 {
         println("decrementing {}", x);
         x = x - 1;
+        let y = 12;
     }
     // if x > 0 {
     //     x = x - 1;
