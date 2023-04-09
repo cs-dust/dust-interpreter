@@ -1,10 +1,15 @@
 use crate::parser::ast::Literal;
+use crate::parser::ast::Literal::{BoolLiteral, UnitLiteral, IntLiteral, StringLiteral};
 
 const HEAP_INIT_SIZE:usize = 1024;
 
+const NUM_LITERAL_TYPES:usize = 3;
+
 const STRING_TYPE:u8 = 0b0000_0000;
 const INTEGER_TYPE:u8 = 0b0000_0001;
-const BOOL_TYPE:u8 = 0b0000_0010;
+const FALSE_TYPE:u8 = 0b0000_0010;
+const TRUE_TYPE:u8 = 0b0000_0011;
+const UNDEFINED_TYPE:u8 = 0b0000_0100;
 
 const DATA_TYPE_OFFSET:u8 = 0;
 const PAYLOAD_OFFSET:u8 = 0;
@@ -39,6 +44,9 @@ impl Heap {
     fn get_data_length(node:u128) -> u32 {
         return ((node >> LENGTH_OFFSET) & (u32::MAX as u128)) as u32;
     }
+    fn get_data_type(node:u128) -> u8 {
+        return ((node >> DATA_TYPE_OFFSET) & (u8::MAX as u128)) as u8;
+    }
     fn get_data_payload(data:u128) -> u64 {
         return (data & (u64::MAX as u128)) as u64;
     }
@@ -55,14 +63,14 @@ impl Heap {
         println!("new heap size: {}", self.heap.len());
     }
 
-    pub fn push_string(&mut self, string:String) -> usize {
+    fn push_string(&mut self, string:String) -> usize {
         while self.free_space <= string.len() + 1 {
             self.expand_heap()
         }
         return 0;
     }
     
-    pub fn push_integer(&mut self, integer:u64) -> usize {
+    fn push_integer(&mut self, integer:u64) -> usize {
         if self.free_space <= 2 {
             self.expand_heap();
         }
@@ -81,23 +89,40 @@ impl Heap {
 
         return first_node_addr;
     }
-    pub fn push_boolean(&self, boolean:bool) -> usize {
+    fn push_boolean(&self, boolean:bool) -> usize {
         return if boolean {0} else {1};
     }
-    pub fn get_string(&self, addr:usize) -> String {
+    fn get_string(&self, addr:usize) -> String {
         return String::from("Hello");
     }
-    pub fn get_integer(&self, addr:usize) -> u64 {
+    fn get_integer(&self, addr:usize) -> u64 {
         let header_node = self.get_node_from_addr(addr);
         let data_addr = Heap::get_next_node(header_node);
         let data_node = self.get_node_from_addr(data_addr);
         return Heap::get_data_payload(data_node);
     }
-    pub fn get_boolean(&self, addr:usize) -> bool {
+    fn get_boolean(&self, addr:usize) -> bool {
         return addr == 0;
     }
+    pub fn heap_push(&mut self, literal:Literal) -> usize {
+        return match literal {
+            Literal::StringLiteral(string) => self.push_string(string),
+            Literal::IntegerLiteral(integer) => self.push_integer(integer),
+            Literal::BooleanLiteral(boolean) => self.push_boolean(boolean),
+            Literal::UnitLiteral => 2,
+        };
+    }
     pub fn heap_get(&self, addr:usize) -> Literal {
-        return Literal::UnitLiteral;
+        let node = self.get_node_from_addr(addr);
+        let data_type = Heap::get_data_type(node);
+        return match data_type {
+            STRING_TYPE => Literal::String(self.get_string(addr)),
+            INTEGER_TYPE => Literal::Integer(self.get_integer(addr)),
+            FALSE_TYPE => Literal::Boolean(false),
+            TRUE_TYPE => Literal::Boolean(true),
+            UNDEFINED_TYPE => Literal::Undefined,
+            _ => panic!("Invalid data type"),
+        };
     }
     pub fn free_space(&mut self, addr:usize)  {
         let node_at_addr = self.get_node_from_addr(addr);
@@ -121,12 +146,15 @@ impl Heap {
     }
     pub fn clear_heap(&mut self) {
         self.heap.clear();
-        self.free_pointer = 2;
-        self.free_space = HEAP_INIT_SIZE - 2;
+        self.free_pointer = NUM_LITERAL_TYPES;
+        self.free_space = HEAP_INIT_SIZE - NUM_LITERAL_TYPES;
         self.size = HEAP_INIT_SIZE;
-        for i in 0..HEAP_INIT_SIZE - 1 {
-            self.heap.push(((i as u128) + 1) << NEXT_NODE_OFFSET);
+        for i in 0..HEAP_INIT_SIZE - NUM_LITERAL_TYPES + 1 {
+            self.heap.push(((i as u128) + NUM_LITERAL_TYPES - 1) << NEXT_NODE_OFFSET);
         }
+        let false_node = Heap::create_header_node(FALSE_TYPE, 0, 1);
+        let true_node = Heap::create_header_node(TRUE_TYPE, 0, 2);
+        let undefined_node = Heap::create_header_node(UNDEFINED_TYPE, 0, 3);
     }
 }
 
