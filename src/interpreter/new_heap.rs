@@ -96,6 +96,9 @@ impl Heap {
     pub fn get_boolean(&self, addr:usize) -> bool {
         return addr == 0;
     }
+    pub fn heap_get(&self, addr:usize) -> Literal {
+        return Literal::UnitLiteral;
+    }
     pub fn free_space(&mut self, addr:usize)  {
         let node_at_addr = self.get_node_from_addr(addr);
         let data_length = Heap::get_data_length(node_at_addr);
