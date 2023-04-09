@@ -56,7 +56,7 @@ impl Heap {
 
     fn expand_heap(&mut self) -> () {
         for i in 0..self.size {
-            self.heap.push(((i + self.size) as u128) << NEXT_NODE_OFFSET);
+            self.heap.push(((i + self.size + 1) as u128) << NEXT_NODE_OFFSET);
         }
         self.free_space += self.size;
         self.size *= 2;
@@ -90,10 +90,10 @@ impl Heap {
         return first_node_addr;
     }
     fn push_boolean(&self, boolean:bool) -> usize {
-        return if boolean {0} else {1};
+        return if boolean {1} else {0};
     }
     fn get_string(&self, addr:usize) -> String {
-        return String::from("Hello");
+        return String::from("Hi");
     }
     fn get_integer(&self, addr:usize) -> u64 {
         let header_node = self.get_node_from_addr(addr);
@@ -102,7 +102,7 @@ impl Heap {
         return Heap::get_data_payload(data_node);
     }
     fn get_boolean(&self, addr:usize) -> bool {
-        return addr == 0;
+        return addr == 1;
     }
     pub fn heap_push(&mut self, literal:Literal) -> usize {
         return match literal {
@@ -116,11 +116,11 @@ impl Heap {
         let node = self.get_node_from_addr(addr);
         let data_type = Heap::get_data_type(node);
         return match data_type {
-            STRING_TYPE => Literal::String(self.get_string(addr)),
-            INTEGER_TYPE => Literal::Integer(self.get_integer(addr)),
-            FALSE_TYPE => Literal::Boolean(false),
-            TRUE_TYPE => Literal::Boolean(true),
-            UNDEFINED_TYPE => Literal::Undefined,
+            STRING_TYPE => Literal::StringLiteral(self.get_string(addr)),
+            INTEGER_TYPE => Literal::IntLiteral(self.get_integer(addr) as i64),
+            FALSE_TYPE => Literal::BoolLiteral(false),
+            TRUE_TYPE => Literal::BoolLiteral(true),
+            UNDEFINED_TYPE => Literal::UnitLiteral,
             _ => panic!("Invalid data type"),
         };
     }
@@ -139,7 +139,7 @@ impl Heap {
     pub fn new() -> Heap {
         return Heap {
             heap: Vec::new(),
-            free_pointer: 2,
+            free_pointer: NUM_LITERAL_TYPES,
             free_space: HEAP_INIT_SIZE,
             size: HEAP_INIT_SIZE,
         };
@@ -149,12 +149,15 @@ impl Heap {
         self.free_pointer = NUM_LITERAL_TYPES;
         self.free_space = HEAP_INIT_SIZE - NUM_LITERAL_TYPES;
         self.size = HEAP_INIT_SIZE;
-        for i in 0..HEAP_INIT_SIZE - NUM_LITERAL_TYPES + 1 {
-            self.heap.push(((i as u128) + NUM_LITERAL_TYPES - 1) << NEXT_NODE_OFFSET);
+        self.heap.push(Heap::create_header_node(FALSE_TYPE, 0, 1));
+        self.heap.push(Heap::create_header_node(TRUE_TYPE, 0, 2));
+        self.heap.push(Heap::create_header_node(UNDEFINED_TYPE, 0, 3));
+        for i in 0..HEAP_INIT_SIZE-NUM_LITERAL_TYPES {
+            self.heap.push(((i as u128) + (NUM_LITERAL_TYPES as u128) + 1) << NEXT_NODE_OFFSET);
         }
-        let false_node = Heap::create_header_node(FALSE_TYPE, 0, 1);
-        let true_node = Heap::create_header_node(TRUE_TYPE, 0, 2);
-        let undefined_node = Heap::create_header_node(UNDEFINED_TYPE, 0, 3);
+        // for i in 0..HEAP_INIT_SIZE {
+        //     println!("{}", Heap::get_next_node(self.get_node_from_addr(i)));
+        // }
     }
 }
 
@@ -177,14 +180,45 @@ fn check_heap_bool() {
 }
 
 #[test]
+fn check_push() {
+    let mut heap = Heap::new();
+    heap.clear_heap();
+    let int_ptr_1 = heap.heap_push(Literal::IntLiteral(69));
+    let bool_ptr_1 = heap.heap_push(Literal::BoolLiteral(false));
+    let int_ptr_2 = heap.heap_push(Literal::IntLiteral(420));
+    let bool_ptr_2 = heap.heap_push(Literal::BoolLiteral(true));
+    let undefined_ptr = heap.heap_push(Literal::UnitLiteral);
+    let _int_1 = match heap.heap_get(int_ptr_1) {
+        IntLiteral(i) => assert_eq!(i, 69),
+        _ => panic!()
+    };
+    let _int_2 = match heap.heap_get(int_ptr_2) {
+        IntLiteral(i) => assert_eq!(i, 420),
+        _ => panic!()
+    };
+    let _bool_1 = match heap.heap_get(bool_ptr_1) {
+        BoolLiteral(b) => assert!(!b),
+        _ => panic!()
+    };
+    let _bool_2 = match heap.heap_get(bool_ptr_2) {
+        BoolLiteral(b) => assert!(b),
+        _ => panic!()
+    };
+    let _undefined = match heap.heap_get(undefined_ptr) {
+        UnitLiteral => assert!(true),
+        _ => panic!()
+    };
+}
+
+#[test]
 fn check_heap_resize() {
     let mut heap = Heap::new();
     heap.clear_heap();
     for i in 1..HEAP_INIT_SIZE*4 {
-        let _ptr = heap.push_integer(i as u64);
+        let ptr = heap.push_integer(i as u64);
     }
-    for i in 1..HEAP_INIT_SIZE {
-        let value = heap.get_integer(2*i);
+    for i in 1..HEAP_INIT_SIZE*4 {
+        let value = heap.get_integer(2*i+1);
         assert_eq!(value, (i as u64));
     }
 }
