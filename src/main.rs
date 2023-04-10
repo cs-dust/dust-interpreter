@@ -23,3 +23,11 @@ fn main() {
         interpreter::run(&mut ast);
     }
 }
+
+#[test]
+fn test_string_move() {
+    let source = fs::read_to_string("/examples/string_move_example.rs").expect("Unable to read file");
+    println!("Parsing...\n");
+    let mut ast = parser::parse(&source).expect("Failed to parse given program");
+    interpreter::run(&mut ast);
+}

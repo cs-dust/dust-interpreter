@@ -10,8 +10,8 @@ use std::rc::Rc;
 use std::collections::HashMap;
 //use crate::interpreter::heap::Heap;
 use crate::parser;
-use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt, Block, Literal, UnaryOperator, BinaryOperator, VariadicOperator, PrimitiveOperator, FuncParameter};
-use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UnitLiteral};
+use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt, Block, Literal, UnaryOperator, BinaryOperator, VariadicOperator, PrimitiveOperator, FuncParameter, StringRef};
+use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, StringRefLiteral, UnitLiteral, MovedLiteral};
 use std::ops::Deref;
 use std::process::id;
 use std::string::String;
@@ -490,15 +490,23 @@ impl Evaluate for AgendaInstrs {
                     },
                     Instructions::Assignment_i(assn) => {
                         //println!("{:#?}", stash.peek());
-                        let v = match stash.peek() {
+                        let mut v = match stash.peek() {
                             Some(value) => value.clone(),
                             None => panic!("Why is nothing in the stash??")
                         };
-                        // Assign the value to the name in the environment
-                        let nam = assn.clone().sym;
-                        let addr = heap.heap_push(v); // TODO: CHECK IF WORKS
-                        env.set(nam, Object::PtrToLiteral(addr)); // Store the address of the value in the heap
-                        //env.set(nam, Object::Literal(v));
+                        // Check if the rhs is a string ref, which means that string ownership is going to move
+                        match v.clone() {
+                            Literal::StringRefLiteral(srf) => {
+                                let nam = assn.clone().sym;
+                                env.set(nam, Object::PtrToLiteral(srf.addr));
+                                env.set(srf.nam, Object::Literal(Literal::MovedLiteral)); // TODO: move the binding of variable
+                            },
+                            _ => {
+                                let nam = assn.clone().sym;
+                                let addr = heap.heap_push(v);
+                                env.set(nam, Object::PtrToLiteral(addr)); // Store the address of the value in the heap
+                            }
+                        };
                     },
                     Instructions::Overwrite_i(ovr) => {
                         let v = match stash.peek() {
@@ -738,7 +746,7 @@ impl Evaluate for Expr {
                 match env.get(name) { // Find identifier in the environment
                     Some(o) => {
                         let obj = o.clone();
-                        let mut address;
+                        let mut address = 0;
                         let mut value = match obj { // Find identifier in pool
                             Object::Literal(lit) => lit.clone(),
                             Object::PtrToLiteral(addr) => {
@@ -748,11 +756,18 @@ impl Evaluate for Expr {
                             _ => panic!("Identifier expr should point to literal only!")
                         };
                         // Check if this references a String, obtain address
-                        // value = match value.clone() {
-                        //     Literal::StringLiteral(s) => 
-                        // } 
                         // If it is a string, push the reference to it onto the stash as well
-                        // Let the current variable point to a unit literal (move has occured)
+                        value = match value.clone() {
+                            Literal::StringLiteral(s) => {
+                                let str = StringRef {
+                                    value: s,
+                                    addr: address,
+                                    nam: name.clone()
+                                };
+                                Literal::StringRefLiteral(str)
+                            }
+                            _ => value
+                        };
                         stash.push(value);
                     }
                     None => {
@@ -872,6 +887,10 @@ impl Evaluate for Literal {
                 stash.push(StringLiteral(s.clone()));
             },
             UnitLiteral => { stash.push(UnitLiteral) },
+            StringRefLiteral(srf) => {
+                stash.push(StringRefLiteral(srf.clone()));
+            },
+            MovedLiteral => { stash.push(MovedLiteral)},
             _ => panic!("This literal type is not supported!")
         }
     }

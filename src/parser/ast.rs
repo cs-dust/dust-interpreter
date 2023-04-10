@@ -31,9 +31,10 @@ pub enum DataType {
 
 
 #[derive(Debug, Clone)]
-pub struct StringRefLiteral {
+pub struct StringRef {
     pub value: String,
-    pub addr: u64
+    pub addr: usize,
+    pub nam: String
 }
 
 #[derive(Debug, Clone)]
@@ -41,7 +42,9 @@ pub enum Literal {
     IntLiteral(i64),
     BoolLiteral(bool),
     StringLiteral(String),
-    UnitLiteral
+    UnitLiteral,
+    StringRefLiteral(StringRef),
+    MovedLiteral
 }
 
 #[derive(Debug, Clone)]
