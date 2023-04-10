@@ -748,9 +748,9 @@ impl Evaluate for Expr {
                             _ => panic!("Identifier expr should point to literal only!")
                         };
                         // Check if this references a String, obtain address
-                        value = match value.clone() {
-                            Literal::StringLiteral(s) => 
-                        } 
+                        // value = match value.clone() {
+                        //     Literal::StringLiteral(s) => 
+                        // } 
                         // If it is a string, push the reference to it onto the stash as well
                         // Let the current variable point to a unit literal (move has occured)
                         stash.push(value);
