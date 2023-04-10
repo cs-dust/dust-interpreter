@@ -172,3 +172,11 @@ fn test_ownership_function() {
     let mut ast = parser::parse(&source).expect("Failed to parse given program");
     interpreter::run(&mut ast);
 }
+
+#[test]
+fn test_nested_function() {
+    let source = fs::read_to_string("examples/nested_function.rs").expect("Unable to read file");
+    println!("Parsing...\n");
+    let mut ast = parser::parse(&source).expect("Failed to parse given program");
+    interpreter::run(&mut ast);
+}

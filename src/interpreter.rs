@@ -327,15 +327,21 @@ pub fn apply_unop(x: Option<Literal>, sym: UnaryOperator) -> Literal {
 /***************************************************************************************************
 * Pushing statements onto agenda in reverse
 ***************************************************************************************************/
-pub fn push_block_stmts_reverse(instr_stack: &mut Vec<AgendaInstrs>, statements: Vec<SequenceStmt>) {
+pub fn push_block_stmts_reverse(instr_stack: &mut Vec<AgendaInstrs>, statements: Vec<SequenceStmt>, env: &mut Box<Environment>) {
     let mut statements_clone = statements.clone();
     let mut curr_stmt = statements_clone.pop();
     while curr_stmt.is_some() {
         let curr: SequenceStmt = curr_stmt.expect("No block statements?"); // current statement
         match curr.clone() {
-            SequenceStmt::Stmt(s) => {
-                instr_stack.push(AgendaInstrs::Stmt(s));
-                instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
+            SequenceStmt::Stmt(s) => match s.clone() {
+                Stmt::FuncDeclaration{name, lifetime_parameters, parameters, return_type, body, position }=> {
+                    let nam = get_name(&name);
+                    env.set(nam, Object::DeclStatement(s));
+                },
+                _ => {
+                    instr_stack.push(AgendaInstrs::Stmt(s));
+                    instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
+                }
             }
             SequenceStmt::Block(b) => instr_stack.push(AgendaInstrs::Block(b))
         }
@@ -473,9 +479,12 @@ impl Evaluate for AgendaInstrs {
                 for (_, value) in with_outer.store.iter() {
                     match value {
                         Object::PtrToLiteral(addr) => {
+                            println!("---heap before---");
                             heap.print_stats();
                             heap.free_space(*addr);
+                            println!("---heap after---");
                             heap.print_stats();
+                            println!("----------------");
                         },
                         _ => {}
                     };
@@ -640,7 +649,7 @@ impl Evaluate for AgendaInstrs {
 
                             // TODO: Check for function declarations here and add to the environment
                             let mut statements = fun_body.statements.clone();
-                            push_block_stmts_reverse(instr_stack, statements);
+                            push_block_stmts_reverse(instr_stack, statements, env);
                         }
                     },
                     Instructions::Branch_i(br) => {
@@ -785,7 +794,7 @@ impl Evaluate for Block {
 
         // TODO: Check for function declarations here and add to the environment
         let mut statements_clone = self.statements.clone();
-        push_block_stmts_reverse(instr_stack, statements_clone);
+        push_block_stmts_reverse(instr_stack, statements_clone, env);
     }
 }
 
