@@ -153,6 +153,8 @@ impl Heap {
                 self.push_boolean(boolean)
             },
             Literal::UnitLiteral => 2,
+            Literal::MovedLiteral => 3,
+            _ => panic!()
         };
     }
     pub fn heap_get(&self, addr: usize) -> Literal {
@@ -327,13 +329,13 @@ fn check_heap_resize() {
 fn check_concat() {
     let mut heap = Heap::new();
     heap.clear_heap();
-    let string_a_ptr = heap.push_string(String::from("egg"));
-    let string_b_ptr = heap.push_string(String::from("nog"));
+    let string_a_ptr = heap.push_string(String::from("cyka"));
+    let string_b_ptr = heap.push_string(String::from(" blyat"));
     let string_c_ptr = heap.heap_string_concat(string_a_ptr, string_b_ptr);
     println!("{} {} {}", string_a_ptr, string_b_ptr, string_c_ptr);
     let _string_c = match heap.heap_get(string_c_ptr){
         Literal::StringLiteral(s) => {
-            assert_eq!(s, "eggnog");
+            assert_eq!(s, "cyka blyat");
         }
         _ => {
             panic!();
