@@ -1,5 +1,4 @@
 use crate::parser::ast::Literal;
-use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UnitLiteral};
 
 const HEAP_INIT_SIZE: usize = 1024;
 
@@ -164,6 +163,7 @@ impl Heap {
             INTEGER_TYPE => Literal::IntLiteral(self.get_integer(addr) as i64),
             FALSE_TYPE => Literal::BoolLiteral(false),
             TRUE_TYPE => Literal::BoolLiteral(true),
+            MOVED_TYPE => Literal::MovedLiteral,
             UNDEFINED_TYPE => Literal::UnitLiteral,
             _ => panic!("Invalid data type"),
         };
