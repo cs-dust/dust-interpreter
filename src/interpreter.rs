@@ -198,8 +198,9 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
     }
     if S.is_empty() || S.len() > 1 {
         println!("Stash is empty!");
+    } else {
+        println!("{:#?}", S[0]);
     }
-    println!("{:#?}", S[0]);
 }
 
 /***************************************************************************************************
@@ -238,7 +239,7 @@ pub fn binop_microcode_bool(x: bool, y: bool, sym: BinaryOperator) -> Literal {
     return BoolLiteral(output);
 }
 
-pub fn apply_binop(x: Option<Literal>, y: Option<Literal>, sym: BinaryOperator) -> Literal {
+pub fn apply_binop(x: Option<Literal>, y: Option<Literal>, sym: BinaryOperator, heap: &mut Heap, env: &mut Box<Environment>) -> Literal {
     //print!("{:#?}", x);
     let output = match x { // Check type of x
         Some(Literal::IntLiteral(x_num)) => match y {
@@ -248,13 +249,50 @@ pub fn apply_binop(x: Option<Literal>, y: Option<Literal>, sym: BinaryOperator) 
                 _ => panic!("fn. apply_binop operator unsupported for types x(int) and y(int)!")
             }
             _ => panic!("fn. apply_binop x(int) and y have different types!")
-        }
+        },
         Some(Literal::BoolLiteral(x_bool)) => match y {
             Some(Literal::BoolLiteral(y_bool)) => match sym { // Ensure x any y are both bool types
                 BinaryOperator::And|BinaryOperator::Or => binop_microcode_bool(x_bool, y_bool, sym),
                 _ => panic!("fn. apply_binop operator unsupported for types x(bool) and y(bool)!")
             }
             _ => panic!("fn. apply_binop x(bool) and y have different types!")
+        },
+        Some(Literal::StringRefLiteral(srfx)) => match y {
+            Some(Literal::StringRefLiteral(srfy)) => match sym {
+                BinaryOperator::Plus => {
+                    let concat_str_addr = heap.heap_string_concat(srfx.addr, srfy.addr);
+                    let concat_str = match heap.heap_get(concat_str_addr) {
+                        Literal::StringLiteral(s) => s,
+                        _ => panic!("How did a string concat to this?")
+                    };
+                    let new_str = StringRef {
+                        value: concat_str,
+                        addr: concat_str_addr,
+                        nam: srfx.nam // x moves
+                    };
+                    Literal::StringRefLiteral(new_str)
+                },
+                _ => panic!("fn apply_binop does not support given operator for strings")
+            },
+            Some(Literal::StringLiteral(y_str)) => match sym {
+                BinaryOperator::Plus => {
+                    let y_str_addr = heap.heap_push(Literal::StringLiteral(y_str));
+                    let concat_str_addr = heap.heap_string_concat(srfx.addr, y_str_addr);
+                    let concat_str = match heap.heap_get(concat_str_addr) {
+                        Literal::StringLiteral(s) => s,
+                        _ => panic!("How did a string concat to this?")
+                    };
+                    //heap.free_space(y_str_addr); // Clear y, not used again TODO: Fix
+                    let new_str = StringRef {
+                        value: concat_str,
+                        addr: concat_str_addr,
+                        nam: srfx.nam // x moves
+                    };
+                    Literal::StringRefLiteral(new_str)
+                },
+                _ => panic!("fn. apply_binop does not support given operator for strings")
+            }
+            _ => panic!("fn. apply_binop does not support given operator for the given types")
         }
         _=> panic!("fn. apply_binop primitive operations unsupported for this type!")
     };
@@ -281,7 +319,7 @@ pub fn apply_unop(x: Option<Literal>, sym: UnaryOperator) -> Literal {
     let output = match x {
         Some(Literal::IntLiteral(value)) => unop_microcode_num(value, sym),
         Some(Literal::BoolLiteral(value)) => unop_microcode_bool(value, sym),
-        _ => panic!("fn. apply_binop unsupported type for x!")
+        _ => panic!("fn. apply_unop unsupported type for x!")
     };
     return output;
 }
@@ -476,7 +514,7 @@ impl Evaluate for AgendaInstrs {
                         let lhs_operand = stash.pop();
                         //println!("{:#?}", lhs_operand.clone());
                         let operator = binop.sym;
-                        let value = apply_binop(lhs_operand, rhs_operand, operator);
+                        let value = apply_binop(lhs_operand, rhs_operand, operator, heap, env);
                         stash.push(value);
                     },
                     Instructions::Pop => {
@@ -489,7 +527,7 @@ impl Evaluate for AgendaInstrs {
                         // Nothing
                     },
                     Instructions::Assignment_i(assn) => {
-                        //println!("{:#?}", stash.peek());
+
                         let mut v = match stash.peek() {
                             Some(value) => value.clone(),
                             None => panic!("Why is nothing in the stash??")
@@ -499,7 +537,8 @@ impl Evaluate for AgendaInstrs {
                             Literal::StringRefLiteral(srf) => {
                                 let nam = assn.clone().sym;
                                 env.set(nam, Object::PtrToLiteral(srf.addr));
-                                env.set(srf.nam, Object::Literal(Literal::MovedLiteral)); // TODO: move the binding of variable
+                                let mov_addr = heap.heap_push(Literal::MovedLiteral);
+                                env.set_mut(srf.nam.as_str(), Object::PtrToLiteral(mov_addr)); // TODO: move the binding of variable
                             },
                             _ => {
                                 let nam = assn.clone().sym;
@@ -509,10 +548,6 @@ impl Evaluate for AgendaInstrs {
                         };
                     },
                     Instructions::Overwrite_i(ovr) => {
-                        let v = match stash.peek() {
-                            Some(value) => value.clone(),
-                            None => panic!("Why is nothing in the stash??")
-                        };
                         // Overwrite name in the environment
                         let nam = ovr.clone().sym;
                         // Get the address of where it is currently stored
@@ -521,9 +556,22 @@ impl Evaluate for AgendaInstrs {
                             _ => {panic!()}
                         };
                         heap.free_space(old_addr);
-                        let addr = heap.heap_push(v); // TODO: CHECK IF WORKS & FREE OLD VALUE
-                        env.set_mut(nam.as_str(), Object::PtrToLiteral(addr));
-                        //env.set_mut(nam.as_str(), Object::Literal(v));
+
+                        let v = match stash.peek() {
+                            Some(value) => value.clone(),
+                            None => panic!("Why is nothing in the stash??")
+                        };
+                        match v.clone() {
+                            Literal::StringRefLiteral(srf) => {
+                                env.set_mut(nam.as_str(), Object::PtrToLiteral(srf.addr));
+                                let mov_addr = heap.heap_push(Literal::MovedLiteral);
+                                env.set_mut(srf.nam.as_str(), Object::PtrToLiteral(mov_addr));// TODO: move the binding of variable
+                            },
+                            _ => {
+                                let addr = heap.heap_push(v);
+                                env.set_mut(nam.as_str(), Object::PtrToLiteral(addr));
+                            }
+                        };
                     },
                     Instructions::App_i(app) => {
                         let arity= app.arity;
