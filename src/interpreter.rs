@@ -738,14 +738,19 @@ impl Evaluate for Expr {
                 match env.get(name) { // Find identifier in the environment
                     Some(o) => {
                         let obj = o.clone();
-                        let value = match obj { // Find identifier in pool
+                        let mut address;
+                        let mut value = match obj { // Find identifier in pool
                             Object::Literal(lit) => lit.clone(),
                             Object::PtrToLiteral(addr) => {
-                                heap.heap_get(addr) // TODO CHECK IF HEAP_GET IS UPDATED ALR
+                                address = addr;
+                                heap.heap_get(addr)
                             }
                             _ => panic!("Identifier expr should point to literal only!")
                         };
-                        // Check if this references a String, obtain address 
+                        // Check if this references a String, obtain address
+                        value = match value.clone() {
+                            Literal::StringLiteral(s) => 
+                        } 
                         // If it is a string, push the reference to it onto the stash as well
                         // Let the current variable point to a unit literal (move has occured)
                         stash.push(value);

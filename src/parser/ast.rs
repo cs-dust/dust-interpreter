@@ -31,6 +31,12 @@ pub enum DataType {
 
 
 #[derive(Debug, Clone)]
+pub struct StringRefLiteral {
+    pub value: String,
+    pub addr: u64
+}
+
+#[derive(Debug, Clone)]
 pub enum Literal {
     IntLiteral(i64),
     BoolLiteral(bool),
