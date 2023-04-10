@@ -285,27 +285,27 @@ fn check_push() {
     let undefined_ptr = heap.heap_push(Literal::UnitLiteral);
     let string_ptr = heap.heap_push(Literal::StringLiteral(String::from("Testing")));
     let _int_1 = match heap.heap_get(int_ptr_1) {
-        IntLiteral(i) => assert_eq!(i, 69),
+        Literal::IntLiteral(i) => assert_eq!(i, 69),
         _ => panic!(),
     };
     let _int_2 = match heap.heap_get(int_ptr_2) {
-        IntLiteral(i) => assert_eq!(i, 420),
+        Literal::IntLiteral(i) => assert_eq!(i, 420),
         _ => panic!(),
     };
     let _bool_1 = match heap.heap_get(bool_ptr_1) {
-        BoolLiteral(b) => assert!(!b),
+        Literal::BoolLiteral(b) => assert!(!b),
         _ => panic!(),
     };
     let _bool_2 = match heap.heap_get(bool_ptr_2) {
-        BoolLiteral(b) => assert!(b),
+        Literal::BoolLiteral(b) => assert!(b),
         _ => panic!(),
     };
     let _string_2 = match heap.heap_get(string_ptr) {
-        StringLiteral(s) => assert_eq!(s, "Testing"),
+        Literal::StringLiteral(s) => assert_eq!(s, "Testing"),
         _ => panic!(),
     };
     let _undefined = match heap.heap_get(undefined_ptr) {
-        UnitLiteral => assert!(true),
+        Literal::UnitLiteral => assert!(true),
         _ => panic!(),
     };
 }
@@ -332,7 +332,7 @@ fn check_concat() {
     let string_c_ptr = heap.heap_string_concat(string_a_ptr, string_b_ptr);
     println!("{} {} {}", string_a_ptr, string_b_ptr, string_c_ptr);
     let _string_c = match heap.heap_get(string_c_ptr){
-        StringLiteral(s) => {
+        Literal::StringLiteral(s) => {
             assert_eq!(s, "eggnog");
         }
         _ => {
