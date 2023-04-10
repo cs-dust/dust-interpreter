@@ -1,3 +1,3 @@
 fn main() {
-    !true;
+    println("!true gives: ", !true);
 }

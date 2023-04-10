@@ -6,6 +6,7 @@ use crate::interpreter::new_heap::Heap;
 use crate::parser;
 use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt, Block, Literal, UnaryOperator, BinaryOperator, VariadicOperator, PrimitiveOperator};
 use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UnitLiteral};
+use crate::interpreter;
 
 #[derive(Debug, Clone)]
 pub struct TopLevelMap {
@@ -128,8 +129,18 @@ impl  Environment {
         while curr_param_name.is_some() { // Bind passed values to the function parameters
             let curr: String = curr_param_name.expect("No params");
             let value_passed = args.get(i).expect("No value passed to a function that requires one?");
-            let addr = heap.heap_push(value_passed.clone());
-            self.set(curr, Object::PtrToLiteral(addr)); // TODO: BIND THE HEAP PTR done
+            match value_passed.clone() {
+                Literal::StringRefLiteral(srf) => {
+                    // equivalent to transfer_ownership in interpeter.rs
+                    self.set(curr, Object::PtrToLiteral(srf.addr));
+                    let mov_addr = heap.heap_push(Literal::MovedLiteral);
+                    self.set_mut(srf.nam.as_str(), Object::PtrToLiteral(mov_addr));
+                },
+                _ => {
+                    let addr = heap.heap_push(value_passed.clone());
+                    self.set(curr, Object::PtrToLiteral(addr));
+                }
+            };
             i = i + 1;
             curr_param_name = params_clone.pop();
         }

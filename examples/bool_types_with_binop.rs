@@ -1,8 +1,13 @@
 fn main() {
     // bool
     let a = true;
+    println("a is ", a);
     let b = false;
-    let bool_expr = a && b;
+    println("b is ", b);
 
-    println("a && b gives ", bool_expr);
+    let bool_and = a && b;
+    println("a && b gives ", bool_and);
+
+    let bool_or = a || b;
+    println("a || b gives ", bool_or);
 }

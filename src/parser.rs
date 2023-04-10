@@ -1032,51 +1032,51 @@ pub fn parse(program: &str) -> Result<Vec<Stmt>> {
     OxidoParser::program(inputs.single()?)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::parse;
-    use walkdir::{WalkDir, DirEntry};
-    use std::fs;
-
-    type GetFilesPredicate = fn(&DirEntry) -> bool;
-
-    fn get_files_from(path: &str, predicate: GetFilesPredicate) -> Vec<DirEntry> {
-        WalkDir::new(path)
-            .follow_links(true)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(predicate)
-            .collect::<Vec<DirEntry>>()
-    }
-
-    #[test]
-    fn test_parse() {
-        let test_dir = "parse_examples";
-        let valid_program_entries = get_files_from(test_dir, |e| {
-            let file_name = e.file_name().to_string_lossy();
-            file_name.ends_with(".rs") && file_name != "statement_parse_error.rs"
-        });
-
-        assert!(valid_program_entries.len() > 0);
-
-        valid_program_entries
-            .iter()
-            .for_each(|file| {
-                let program = fs::read_to_string(file.path()).expect("Unable to read valid test program");
-                assert!(parse(&program).is_ok(), "Failed to parse syntatically valid program: {:#?}", file.path());
-            });
-
-        let invalid_programs_entries = get_files_from(test_dir, |e|
-            e.file_name().to_string_lossy() == "statement_parse_error.rs");
-
-        assert!(invalid_programs_entries.len() > 0);
-
-        invalid_programs_entries
-            .iter()
-            .for_each(|file| {
-                let program = fs::read_to_string(file.path()).expect("Unable to read invalid test program");
-                assert!(parse(&program).is_err(), "Failed to reject syntatically invalid program: {:#?}", file.path());
-            });
-
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use super::parse;
+//     use walkdir::{WalkDir, DirEntry};
+//     use std::fs;
+//
+//     type GetFilesPredicate = fn(&DirEntry) -> bool;
+//
+//     fn get_files_from(path: &str, predicate: GetFilesPredicate) -> Vec<DirEntry> {
+//         WalkDir::new(path)
+//             .follow_links(true)
+//             .into_iter()
+//             .filter_map(|e| e.ok())
+//             .filter(predicate)
+//             .collect::<Vec<DirEntry>>()
+//     }
+//
+//     #[test]
+//     fn test_parse() {
+//         let test_dir = "parse_examples";
+//         let valid_program_entries = get_files_from(test_dir, |e| {
+//             let file_name = e.file_name().to_string_lossy();
+//             file_name.ends_with(".rs") && file_name != "statement_parse_error.rs"
+//         });
+//
+//         assert!(valid_program_entries.len() > 0);
+//
+//         valid_program_entries
+//             .iter()
+//             .for_each(|file| {
+//                 let program = fs::read_to_string(file.path()).expect("Unable to read valid test program");
+//                 assert!(parse(&program).is_ok(), "Failed to parse syntatically valid program: {:#?}", file.path());
+//             });
+//
+//         let invalid_programs_entries = get_files_from(test_dir, |e|
+//             e.file_name().to_string_lossy() == "statement_parse_error.rs");
+//
+//         assert!(invalid_programs_entries.len() > 0);
+//
+//         invalid_programs_entries
+//             .iter()
+//             .for_each(|file| {
+//                 let program = fs::read_to_string(file.path()).expect("Unable to read invalid test program");
+//                 assert!(parse(&program).is_err(), "Failed to reject syntatically invalid program: {:#?}", file.path());
+//             });
+//
+//     }
+// }

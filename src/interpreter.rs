@@ -436,6 +436,21 @@ impl Stack<AgendaInstrs> for Vec<AgendaInstrs> {
 }
 
 /***************************************************************************************************
+* Ownership
+***************************************************************************************************/
+pub fn transfer_ownership(from: String, to: String, from_addr: usize, set_mut: bool, env: &mut Box<Environment>, heap: &mut Heap) {
+    // Set the 'to' value to the address of the 'from' binding
+    if set_mut {
+        env.set_mut(to.as_str(), Object::PtrToLiteral(from_addr));
+    } else {
+        env.set(to, Object::PtrToLiteral(from_addr));
+    }
+    let mov_addr = heap.heap_push(Literal::MovedLiteral);
+    // Set the 'from' variable to moved (To show proof of concept)
+    env.set_mut(from.as_str(), Object::PtrToLiteral(mov_addr));
+}
+
+/***************************************************************************************************
 * Evaluation
 ***************************************************************************************************/
 pub trait Evaluate {
@@ -454,9 +469,6 @@ impl Evaluate for AgendaInstrs {
             AgendaInstrs::Expr(expr) => expr.evaluate(instr_stack, stash, env, heap),
             AgendaInstrs::Environment(ref e) => { // Restore environment
                 println!("Restoring");
-                // let mut old_env = e.clone();
-                // *env = old_env; // Restore
-                // Clear the values in the current env - iterate through the outer env & drop values
                 let with_outer = env.clone();
                 for (_, value) in with_outer.store.iter() {
                     match value {
@@ -478,7 +490,6 @@ impl Evaluate for AgendaInstrs {
                 //println!("{:#?}", env.clone());
             }
             AgendaInstrs::Instructions(instr) => {
-                // let mut instr_ptr = 0;
                 match instr {
                     Instructions::Reset => {
                         match instr_stack.pop() {
@@ -510,16 +521,13 @@ impl Evaluate for AgendaInstrs {
                     },
                     Instructions::BinOp(binop) => {
                         let rhs_operand = stash.pop();
-                        //println!("{:#?}", rhs_operand.clone());
                         let lhs_operand = stash.pop();
-                        //println!("{:#?}", lhs_operand.clone());
                         let operator = binop.sym;
                         let value = apply_binop(lhs_operand, rhs_operand, operator, heap, env);
                         stash.push(value);
                     },
                     Instructions::Pop => {
                         stash.pop();
-                        // println!("Pop!! {:#?}", stash.pop());
                     },
                     Instructions::App => {},
                     Instructions::Branch => {},
@@ -527,7 +535,7 @@ impl Evaluate for AgendaInstrs {
                         // Nothing
                     },
                     Instructions::Assignment_i(assn) => {
-
+                        let nam = assn.clone().sym;
                         let mut v = match stash.peek() {
                             Some(value) => value.clone(),
                             None => panic!("Why is nothing in the stash??")
@@ -535,13 +543,9 @@ impl Evaluate for AgendaInstrs {
                         // Check if the rhs is a string ref, which means that string ownership is going to move
                         match v.clone() {
                             Literal::StringRefLiteral(srf) => {
-                                let nam = assn.clone().sym;
-                                env.set(nam, Object::PtrToLiteral(srf.addr));
-                                let mov_addr = heap.heap_push(Literal::MovedLiteral);
-                                env.set_mut(srf.nam.as_str(), Object::PtrToLiteral(mov_addr)); // TODO: move the binding of variable
+                                transfer_ownership(srf.nam, nam, srf.addr, false, env, heap);
                             },
                             _ => {
-                                let nam = assn.clone().sym;
                                 let addr = heap.heap_push(v);
                                 env.set(nam, Object::PtrToLiteral(addr)); // Store the address of the value in the heap
                             }
@@ -563,9 +567,7 @@ impl Evaluate for AgendaInstrs {
                         };
                         match v.clone() {
                             Literal::StringRefLiteral(srf) => {
-                                env.set_mut(nam.as_str(), Object::PtrToLiteral(srf.addr));
-                                let mov_addr = heap.heap_push(Literal::MovedLiteral);
-                                env.set_mut(srf.nam.as_str(), Object::PtrToLiteral(mov_addr));// TODO: move the binding of variable
+                                transfer_ownership(srf.nam, nam, srf.addr, true, env, heap);
                             },
                             _ => {
                                 let addr = heap.heap_push(v);
