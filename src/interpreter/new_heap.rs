@@ -21,6 +21,7 @@ pub struct Heap {
     free_pointer: usize,
     free_space: usize,
     size: usize,
+    debug: bool
 }
 
 impl Heap {
@@ -142,15 +143,21 @@ impl Heap {
     pub fn heap_push(&mut self, literal: Literal) -> usize {
         return match literal {
             Literal::StringLiteral(string) => {
-                println!("Pushed string {}", string);
+                if self.debug {
+                    println!("Pushed string {}", string);
+                }
                 self.push_string(string)
             },
             Literal::IntLiteral(integer) => {
-                println!("Pushed int {}", integer);
+                if self.debug {
+                    println!("Pushed int {}", integer);
+                }
                 self.push_integer(integer as u64)
             },
             Literal::BoolLiteral(boolean) => {
-                println!("Pushed boolean {}", boolean);
+                if self.debug {
+                    println!("Pushed boolean {}", boolean);
+                }
                 self.push_boolean(boolean)
             },
             Literal::UnitLiteral => 2,
@@ -227,12 +234,13 @@ impl Heap {
         self.free_space += data_length as usize + 1;
         self.free_pointer = addr;
     }
-    pub fn new() -> Heap {
+    pub fn new(debug_or_not: bool) -> Heap {
         return Heap {
             heap: Vec::new(),
             free_pointer: NUM_LITERAL_TYPES,
             free_space: HEAP_INIT_SIZE,
             size: HEAP_INIT_SIZE,
+            debug: debug_or_not
         };
     }
     pub fn print_stats(&self) {

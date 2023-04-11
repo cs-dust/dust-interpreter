@@ -103,7 +103,7 @@ pub enum AgendaInstrs {
 /***************************************************************************************************
 * Run the code
 ***************************************************************************************************/
-pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
+pub fn run(ast: &mut Vec<parser::ast::Stmt>, debug: bool) {
     // To be used later, commented to suppress warnings
     // The heap for the program being run by our interpreter
     // let heap = Heap::new();
@@ -187,7 +187,7 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
     global_env.insert_top_level(functions.clone()); // Insert top level declarations into environment
     global_env.insert_top_level(statics.clone());
     let mut E = Box::new(global_env);
-    let mut H = Heap::new();
+    let mut H = Heap::new(debug);
     H.clear_heap();
     A.push(AgendaInstrs::Stmt(functions.list[main_idx].clone())); // We start with main
     // TODO: Check if we should have a step limit
@@ -203,9 +203,43 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
     }
 }
 
+fn print_statement(args:Vec<Literal>, heap: &Heap) {
+    for arg in args.iter() {
+        match arg {
+            StringLiteral(s) => {
+                print!("{}", s);
+            },
+            IntLiteral(i) => {
+                print!("{}", i);
+            },
+            BoolLiteral(b) => {
+                print!("{}", b);
+            },
+            UnitLiteral => {
+                print!("UnitLiteral")
+            },
+            MovedLiteral => {
+                print!("\t!!!This value was moved!!!\t")
+            },
+            StringRefLiteral(sr) => {
+                match heap.heap_get(sr.addr) {
+                    StringLiteral(s) => {
+                        print!("{}", s)
+                    }
+                    _ => {
+                        panic!()
+                    }
+                }
+            }
+        }
+    }
+    println!("");
+}
+
 /***************************************************************************************************
 * Operators
 ***************************************************************************************************/
+
 pub fn binop_microcode_num(x: i64, y: i64, sym: BinaryOperator) -> Literal {
     let output =  match sym {
         BinaryOperator::Plus => x + y,
@@ -599,7 +633,7 @@ impl Evaluate for AgendaInstrs {
                         };
                         if app.builtin {
                             match app.sym.as_str() {
-                                "println" => println!("{:#?}", args),
+                                "println" => print_statement(args, heap),
                                 _ => panic!("Builtin {} not supported!", app.sym.as_str())
                             }
                         } else {

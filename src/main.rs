@@ -9,6 +9,8 @@ mod parser;
 mod interpreter;
 mod test;
 
+const DEBUG_MODE: bool = false;
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     let paths = fs::read_dir("examples/").unwrap();
@@ -21,6 +23,6 @@ fn main() {
             process::exit(0);
         }
         //println!("{:#?}", ast);
-        interpreter::run(&mut ast);
+        interpreter::run(&mut ast, DEBUG_MODE);
     }
 }
