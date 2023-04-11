@@ -29,6 +29,18 @@ fn test_simple_assignment() {
     interpreter::run(&mut ast);
 }
 
+/**
+* Test: Primitive values and how they work
+**/
+#[test]
+fn test_primitive_values() {
+    let source = fs::read_to_string("examples/primitive_value_example.rs").expect("Unable to read file");
+    println!("Parsing...\n");
+    let mut ast = parser::parse(&source).expect("Failed to parse given program");
+    interpreter::run(&mut ast);
+}
+
+
 #[test]
 fn test_simple_unop() {
     let source = fs::read_to_string("examples/simple_unop.rs").expect("Unable to read file");
@@ -69,6 +81,17 @@ fn test_block_expression() {
     interpreter::run(&mut ast);
 }
 
+/**
+* Test: Block expressions with return statements and primitive operations
+**/
+#[test]
+fn test_block_expression_with_primitive_op() {
+    let source = fs::read_to_string("examples/block_expression_primitive_op.rs").expect("Unable to read file");
+    println!("Parsing...\n");
+    let mut ast = parser::parse(&source).expect("Failed to parse given program");
+    interpreter::run(&mut ast);
+}
+
 #[test]
 fn test_block_env() {
     let source = fs::read_to_string("examples/block_env_example.rs").expect("Unable to read file");
@@ -88,6 +111,14 @@ fn test_function_return() {
 #[test]
 fn test_function_return_binop() {
     let source = fs::read_to_string("examples/function_return_addition.rs").expect("Unable to read file");
+    println!("Parsing...\n");
+    let mut ast = parser::parse(&source).expect("Failed to parse given program");
+    interpreter::run(&mut ast);
+}
+
+#[test]
+fn test_function_return_nested_vs_normal() {
+    let source = fs::read_to_string("examples/function_application_nested_vs_normal.rs").expect("Unable to read file");
     println!("Parsing...\n");
     let mut ast = parser::parse(&source).expect("Failed to parse given program");
     interpreter::run(&mut ast);
@@ -120,6 +151,17 @@ fn test_if_else_disjunction() {
 #[test]
 fn test_while_loop() {
     let source = fs::read_to_string("examples/while_loop_example.rs").expect("Unable to read file");
+    println!("Parsing...\n");
+    let mut ast = parser::parse(&source).expect("Failed to parse given program");
+    interpreter::run(&mut ast);
+}
+
+/**
+* Test: Show loops in combination with other control flow statements like if else
+**/
+#[test]
+fn test_control_flow_fizzbuzz() {
+    let source = fs::read_to_string("examples/control_flow_fizzbuzz.rs").expect("Unable to read file");
     println!("Parsing...\n");
     let mut ast = parser::parse(&source).expect("Failed to parse given program");
     interpreter::run(&mut ast);
