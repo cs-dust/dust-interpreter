@@ -1,4 +1,5 @@
 mod environment;
+mod new_heap;
 use std::borrow::Borrow;
 use crate::interpreter::environment::Environment;
 use environment::Object;
@@ -9,11 +10,12 @@ use std::rc::Rc;
 use std::collections::HashMap;
 //use crate::interpreter::heap::Heap;
 use crate::parser;
-use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt, Block, Literal, UnaryOperator, BinaryOperator, VariadicOperator, PrimitiveOperator, FuncParameter};
-use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UnitLiteral};
+use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt, Block, Literal, UnaryOperator, BinaryOperator, VariadicOperator, PrimitiveOperator, FuncParameter, StringRef};
+use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, StringRefLiteral, UnitLiteral, MovedLiteral};
 use std::ops::Deref;
 use std::process::id;
 use std::string::String;
+use crate::interpreter::new_heap::Heap;
 use crate::parser::ast::Stmt::FuncDeclaration;
 
 #[derive(Debug, Clone)]
@@ -101,7 +103,7 @@ pub enum AgendaInstrs {
 /***************************************************************************************************
 * Run the code
 ***************************************************************************************************/
-pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
+pub fn run(ast: &mut Vec<parser::ast::Stmt>, debug: bool) {
     // To be used later, commented to suppress warnings
     // The heap for the program being run by our interpreter
     // let heap = Heap::new();
@@ -185,23 +187,59 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>) {
     global_env.insert_top_level(functions.clone()); // Insert top level declarations into environment
     global_env.insert_top_level(statics.clone());
     let mut E = Box::new(global_env);
-
+    let mut H = Heap::new(debug);
+    H.clear_heap();
     A.push(AgendaInstrs::Stmt(functions.list[main_idx].clone())); // We start with main
     // TODO: Check if we should have a step limit
     while !A.is_empty() {
         let curr: AgendaInstrs = A.pop().expect("Literally impossible but ok");
-        curr.evaluate(&mut A, &mut S, &mut E); // Borrowing w/ Mutable Reference
+        curr.evaluate(&mut A, &mut S, &mut E, &mut H); // Borrowing w/ Mutable Reference
         //println!("{:#?}", curr.clone());
     }
     if S.is_empty() || S.len() > 1 {
         println!("Stash is empty!");
+    } else {
+        println!("{:#?}", S[0]);
     }
-    println!("{:#?}", S[0]);
+}
+
+fn print_statement(args:Vec<Literal>, heap: &Heap) {
+    for arg in args.iter() {
+        match arg {
+            StringLiteral(s) => {
+                print!("{}", s);
+            },
+            IntLiteral(i) => {
+                print!("{}", i);
+            },
+            BoolLiteral(b) => {
+                print!("{}", b);
+            },
+            UnitLiteral => {
+                print!("UnitLiteral")
+            },
+            MovedLiteral => {
+                print!("\t!!!This value was moved!!!\t")
+            },
+            StringRefLiteral(sr) => {
+                match heap.heap_get(sr.addr) {
+                    StringLiteral(s) => {
+                        print!("{}", s)
+                    }
+                    _ => {
+                        panic!()
+                    }
+                }
+            }
+        }
+    }
+    println!("");
 }
 
 /***************************************************************************************************
 * Operators
 ***************************************************************************************************/
+
 pub fn binop_microcode_num(x: i64, y: i64, sym: BinaryOperator) -> Literal {
     let output =  match sym {
         BinaryOperator::Plus => x + y,
@@ -235,7 +273,7 @@ pub fn binop_microcode_bool(x: bool, y: bool, sym: BinaryOperator) -> Literal {
     return BoolLiteral(output);
 }
 
-pub fn apply_binop(x: Option<Literal>, y: Option<Literal>, sym: BinaryOperator) -> Literal {
+pub fn apply_binop(x: Option<Literal>, y: Option<Literal>, sym: BinaryOperator, heap: &mut Heap, env: &mut Box<Environment>) -> Literal {
     //print!("{:#?}", x);
     let output = match x { // Check type of x
         Some(Literal::IntLiteral(x_num)) => match y {
@@ -245,13 +283,50 @@ pub fn apply_binop(x: Option<Literal>, y: Option<Literal>, sym: BinaryOperator) 
                 _ => panic!("fn. apply_binop operator unsupported for types x(int) and y(int)!")
             }
             _ => panic!("fn. apply_binop x(int) and y have different types!")
-        }
+        },
         Some(Literal::BoolLiteral(x_bool)) => match y {
             Some(Literal::BoolLiteral(y_bool)) => match sym { // Ensure x any y are both bool types
                 BinaryOperator::And|BinaryOperator::Or => binop_microcode_bool(x_bool, y_bool, sym),
                 _ => panic!("fn. apply_binop operator unsupported for types x(bool) and y(bool)!")
             }
             _ => panic!("fn. apply_binop x(bool) and y have different types!")
+        },
+        Some(Literal::StringRefLiteral(srfx)) => match y {
+            Some(Literal::StringRefLiteral(srfy)) => match sym {
+                BinaryOperator::Plus => {
+                    let concat_str_addr = heap.heap_string_concat(srfx.addr, srfy.addr);
+                    let concat_str = match heap.heap_get(concat_str_addr) {
+                        Literal::StringLiteral(s) => s,
+                        _ => panic!("How did a string concat to this?")
+                    };
+                    let new_str = StringRef {
+                        value: concat_str,
+                        addr: concat_str_addr,
+                        nam: srfx.nam // x moves
+                    };
+                    Literal::StringRefLiteral(new_str)
+                },
+                _ => panic!("fn apply_binop does not support given operator for strings")
+            },
+            Some(Literal::StringLiteral(y_str)) => match sym {
+                BinaryOperator::Plus => {
+                    let y_str_addr = heap.heap_push(Literal::StringLiteral(y_str));
+                    let concat_str_addr = heap.heap_string_concat(srfx.addr, y_str_addr);
+                    let concat_str = match heap.heap_get(concat_str_addr) {
+                        Literal::StringLiteral(s) => s,
+                        _ => panic!("How did a string concat to this?")
+                    };
+                    heap.free_space(y_str_addr); // Clear y, not used again TODO: Fix
+                    let new_str = StringRef {
+                        value: concat_str,
+                        addr: concat_str_addr,
+                        nam: srfx.nam // x moves
+                    };
+                    Literal::StringRefLiteral(new_str)
+                },
+                _ => panic!("fn. apply_binop does not support given operator for strings")
+            }
+            _ => panic!("fn. apply_binop does not support given operator for the given types")
         }
         _=> panic!("fn. apply_binop primitive operations unsupported for this type!")
     };
@@ -278,7 +353,7 @@ pub fn apply_unop(x: Option<Literal>, sym: UnaryOperator) -> Literal {
     let output = match x {
         Some(Literal::IntLiteral(value)) => unop_microcode_num(value, sym),
         Some(Literal::BoolLiteral(value)) => unop_microcode_bool(value, sym),
-        _ => panic!("fn. apply_binop unsupported type for x!")
+        _ => panic!("fn. apply_unop unsupported type for x!")
     };
     return output;
 }
@@ -286,15 +361,21 @@ pub fn apply_unop(x: Option<Literal>, sym: UnaryOperator) -> Literal {
 /***************************************************************************************************
 * Pushing statements onto agenda in reverse
 ***************************************************************************************************/
-pub fn push_block_stmts_reverse(instr_stack: &mut Vec<AgendaInstrs>, statements: Vec<SequenceStmt>) {
+pub fn push_block_stmts_reverse(instr_stack: &mut Vec<AgendaInstrs>, statements: Vec<SequenceStmt>, env: &mut Box<Environment>) {
     let mut statements_clone = statements.clone();
     let mut curr_stmt = statements_clone.pop();
     while curr_stmt.is_some() {
         let curr: SequenceStmt = curr_stmt.expect("No block statements?"); // current statement
         match curr.clone() {
-            SequenceStmt::Stmt(s) => {
-                instr_stack.push(AgendaInstrs::Stmt(s));
-                instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
+            SequenceStmt::Stmt(s) => match s.clone() {
+                Stmt::FuncDeclaration{name, lifetime_parameters, parameters, return_type, body, position }=> {
+                    let nam = get_name(&name);
+                    env.set(nam, Object::DeclStatement(s));
+                },
+                _ => {
+                    instr_stack.push(AgendaInstrs::Stmt(s));
+                    instr_stack.push(AgendaInstrs::Instructions(Instructions::Pop));
+                }
             }
             SequenceStmt::Block(b) => instr_stack.push(AgendaInstrs::Block(b))
         }
@@ -395,27 +476,53 @@ impl Stack<AgendaInstrs> for Vec<AgendaInstrs> {
 }
 
 /***************************************************************************************************
+* Ownership
+***************************************************************************************************/
+pub fn transfer_ownership(from: String, to: String, from_addr: usize, set_mut: bool, env: &mut Box<Environment>, heap: &mut Heap) {
+    // Set the 'to' value to the address of the 'from' binding
+    if set_mut {
+        env.set_mut(to.as_str(), Object::PtrToLiteral(from_addr));
+    } else {
+        env.set(to, Object::PtrToLiteral(from_addr));
+    }
+    let mov_addr = heap.heap_push(Literal::MovedLiteral);
+    // Set the 'from' variable to moved (To show proof of concept)
+    env.set_mut(from.as_str(), Object::PtrToLiteral(mov_addr));
+}
+
+/***************************************************************************************************
 * Evaluation
 ***************************************************************************************************/
 pub trait Evaluate {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>);
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>, heap: &mut Heap);
 }
 
 impl Evaluate for AgendaInstrs {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>, heap: &mut Heap) {
         let mut instr_ptr = instr_stack.len();
         match self {
-            AgendaInstrs::Stmt(stmt) => stmt.evaluate(instr_stack, stash, env),
+            AgendaInstrs::Stmt(stmt) => stmt.evaluate(instr_stack, stash, env, heap),
             // AgendaInstrs::SequenceStmt(stmts) => stmts.evaluate(instr_stack, stash),
-            AgendaInstrs::PrimitiveOperation(prim_op) => prim_op.evaluate(instr_stack, stash, env),
-            AgendaInstrs::Block(blk) => blk.evaluate(instr_stack, stash, env),
-            AgendaInstrs::Literal(lit) => lit.evaluate(instr_stack, stash, env),
-            AgendaInstrs::Expr(expr) => expr.evaluate(instr_stack, stash, env),
+            AgendaInstrs::PrimitiveOperation(prim_op) => prim_op.evaluate(instr_stack, stash, env, heap),
+            AgendaInstrs::Block(blk) => blk.evaluate(instr_stack, stash, env, heap),
+            AgendaInstrs::Literal(lit) => lit.evaluate(instr_stack, stash, env, heap),
+            AgendaInstrs::Expr(expr) => expr.evaluate(instr_stack, stash, env, heap),
             AgendaInstrs::Environment(ref e) => { // Restore environment
                 println!("Restoring");
-                // let mut old_env = e.clone();
-                // *env = old_env; // Restore
                 let with_outer = env.clone();
+                for (_, value) in with_outer.store.iter() {
+                    match value {
+                        Object::PtrToLiteral(addr) => {
+                            println!("---heap before---");
+                            heap.print_stats();
+                            heap.free_space(*addr);
+                            println!("---heap after---");
+                            heap.print_stats();
+                            println!("----------------");
+                        },
+                        _ => {}
+                    };
+                }
                 let inner = Environment::go_to_parent(with_outer);
                 match inner.clone() {
                     Some(p) => {
@@ -426,7 +533,6 @@ impl Evaluate for AgendaInstrs {
                 //println!("{:#?}", env.clone());
             }
             AgendaInstrs::Instructions(instr) => {
-                // let mut instr_ptr = 0;
                 match instr {
                     Instructions::Reset => {
                         match instr_stack.pop() {
@@ -458,16 +564,13 @@ impl Evaluate for AgendaInstrs {
                     },
                     Instructions::BinOp(binop) => {
                         let rhs_operand = stash.pop();
-                        //println!("{:#?}", rhs_operand.clone());
                         let lhs_operand = stash.pop();
-                        //println!("{:#?}", lhs_operand.clone());
                         let operator = binop.sym;
-                        let value = apply_binop(lhs_operand, rhs_operand, operator);
+                        let value = apply_binop(lhs_operand, rhs_operand, operator, heap, env);
                         stash.push(value);
                     },
                     Instructions::Pop => {
                         stash.pop();
-                        // println!("Pop!! {:#?}", stash.pop());
                     },
                     Instructions::App => {},
                     Instructions::Branch => {},
@@ -475,23 +578,45 @@ impl Evaluate for AgendaInstrs {
                         // Nothing
                     },
                     Instructions::Assignment_i(assn) => {
-                        //println!("{:#?}", stash.peek());
-                        let v = match stash.peek() {
+                        let nam = assn.clone().sym;
+                        let mut v = match stash.peek() {
                             Some(value) => value.clone(),
                             None => panic!("Why is nothing in the stash??")
                         };
-                        // Assign the value to the name in the environment
-                        let nam = assn.clone().sym;
-                        env.set(nam, Object::Literal(v));
+                        // Check if the rhs is a string ref, which means that string ownership is going to move
+                        match v.clone() {
+                            Literal::StringRefLiteral(srf) => {
+                                transfer_ownership(srf.nam, nam, srf.addr, false, env, heap);
+                            },
+                            _ => {
+                                let addr = heap.heap_push(v);
+                                env.set(nam, Object::PtrToLiteral(addr)); // Store the address of the value in the heap
+                            }
+                        };
                     },
                     Instructions::Overwrite_i(ovr) => {
+                        // Overwrite name in the environment
+                        let nam = ovr.clone().sym;
+                        // Get the address of where it is currently stored
+                        let old_addr = match env.get(nam.clone().as_str()) {
+                            Some(Object::PtrToLiteral(ptr)) => ptr,
+                            _ => {panic!()}
+                        };
+                        heap.free_space(old_addr);
+
                         let v = match stash.peek() {
                             Some(value) => value.clone(),
                             None => panic!("Why is nothing in the stash??")
                         };
-                        // Overwrite name in the environment
-                        let nam = ovr.clone().sym;
-                        env.set_mut(nam.as_str(), Object::Literal(v));
+                        match v.clone() {
+                            Literal::StringRefLiteral(srf) => {
+                                transfer_ownership(srf.nam, nam, srf.addr, true, env, heap);
+                            },
+                            _ => {
+                                let addr = heap.heap_push(v);
+                                env.set_mut(nam.as_str(), Object::PtrToLiteral(addr));
+                            }
+                        };
                     },
                     Instructions::App_i(app) => {
                         let arity= app.arity;
@@ -508,7 +633,7 @@ impl Evaluate for AgendaInstrs {
                         };
                         if app.builtin {
                             match app.sym.as_str() {
-                                "println" => println!("{:#?}", args),
+                                "println" => print_statement(args, heap),
                                 _ => panic!("Builtin {} not supported!", app.sym.as_str())
                             }
                         } else {
@@ -552,13 +677,13 @@ impl Evaluate for AgendaInstrs {
                             let outer = env.clone();
                             let mut new_env = Environment::extend_environment( outer);
 
-                            new_env.bind_parameters(param_names, args);
-                            new_env.insert_locals(locals);
+                            new_env.bind_parameters(param_names, args, heap);
+                            new_env.insert_locals(locals, heap);
                             *env = Box::new(new_env); // Change the current env
 
                             // TODO: Check for function declarations here and add to the environment
                             let mut statements = fun_body.statements.clone();
-                            push_block_stmts_reverse(instr_stack, statements);
+                            push_block_stmts_reverse(instr_stack, statements, env);
                         }
                     },
                     Instructions::Branch_i(br) => {
@@ -620,7 +745,7 @@ impl Evaluate for AgendaInstrs {
 }
 
 impl Evaluate for Stmt {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>, heap: &mut Heap) {
         match self {
             Stmt::LetStmt {name, is_mutable, annotation, value, position} => match value {
                 Some(expr) => {
@@ -652,14 +777,6 @@ impl Evaluate for Stmt {
                 }
             },
             Stmt::IfElseStmt { pred, cons, alt, position } => {
-
-                // // Push predicate expression onto instruction stack
-                // instr_stack.push(AgendaInstrs::Expr(pred.clone()));
-                //
-                // // Push cons and alt expressions onto instruction stack
-                // instr_stack.push(AgendaInstrs::Expr(cons.clone()));
-                // instr_stack.push(AgendaInstrs::Expr(alt.clone()));
-
                 // Create new Branch_i instruction with cloned cons and alt expressions
                 let mut br = Branch_i {
                     cons: cons.clone(),
@@ -670,33 +787,6 @@ impl Evaluate for Stmt {
                 // // Push predicate expression onto instruction stack
                 instr_stack.push(AgendaInstrs::Expr(pred.clone()));
             },
-            // Stmt::ForLoopStmt { init, pred, update, body, position } => {
-            //     println!("in for loop");
-            //     let init = init.clone(); // Clone the init expression
-            //     let pred = pred.clone(); // Clone the pred expression
-            //     let update = update.clone(); // Clone the update expression
-            //     let body = body.clone(); // Clone the body statement
-            //
-            //     let mut cons = vec![]; // Consequent block
-            //
-            //     // If init expression is present, push it onto the consequent block
-            //     if let Some(init_expr) = init {
-            //         cons.push(AgendaInstrs::Expr(init_expr));
-            //     }
-            //
-            //     // Push the update expression, body statement, and pred expression onto the consequent block
-            //     cons.push(AgendaInstrs::Expr(update));
-            //     cons.push(AgendaInstrs::Stmt(body));
-            //     cons.push(AgendaInstrs::Expr(pred));
-            //
-            //     let mut br = Branch_i {
-            //         cons,
-            //         alt: None, // No alternative block for for loop
-            //     };
-            //
-            //     // Push the `Branch_i` instruction onto the instruction stack
-            //     instr_stack.push(AgendaInstrs::Instructions(Instructions::Branch_i(br)));
-            // },
             Stmt::WhileLoopStmt { pred, body, position } => {
                 println!("in while loop");
                 // Create new Loop_i instruction with cloned body expressions
@@ -721,7 +811,7 @@ impl Evaluate for Stmt {
 }
 
 impl Evaluate for Block {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>, heap: &mut Heap) {
         let outer = env.clone();
         let old_env = env.clone();
         if instr_stack.len() != 0 {
@@ -733,25 +823,43 @@ impl Evaluate for Block {
         let mut locals = scan_out_block_declarations(self);
         let mut new_env = Environment::extend_environment(outer);
 
-        new_env.insert_locals(locals);
+        new_env.insert_locals(locals, heap);
         *env = Box::new(new_env);
 
         // TODO: Check for function declarations here and add to the environment
         let mut statements_clone = self.statements.clone();
-        push_block_stmts_reverse(instr_stack, statements_clone);
+        push_block_stmts_reverse(instr_stack, statements_clone, env);
     }
 }
 
 impl Evaluate for Expr {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>, heap: &mut Heap) {
         match self {
             Expr::IdentifierExpr(name, source_location) => {
                 match env.get(name) { // Find identifier in the environment
                     Some(o) => {
                         let obj = o.clone();
-                        let value = match obj { // Find identifier in pool
+                        let mut address = 0;
+                        let mut value = match obj { // Find identifier in pool
                             Object::Literal(lit) => lit.clone(),
+                            Object::PtrToLiteral(addr) => {
+                                address = addr;
+                                heap.heap_get(addr)
+                            }
                             _ => panic!("Identifier expr should point to literal only!")
+                        };
+                        // Check if this references a String, obtain address
+                        // If it is a string, push the reference to it onto the stash as well
+                        value = match value.clone() {
+                            Literal::StringLiteral(s) => {
+                                let str = StringRef {
+                                    value: s,
+                                    addr: address,
+                                    nam: name.clone()
+                                };
+                                Literal::StringRefLiteral(str)
+                            }
+                            _ => value
                         };
                         stash.push(value);
                     }
@@ -761,10 +869,10 @@ impl Evaluate for Expr {
                 }
             }
             Expr::LiteralExpr(literal_value, source_location) => {
-                literal_value.evaluate(instr_stack, stash, env);
+                literal_value.evaluate(instr_stack, stash, env, heap);
             }
             Expr::BlockExpr(block, source_location) => { // Block expr need to have a return stmt
-                block.evaluate(instr_stack, stash, env);
+                block.evaluate(instr_stack, stash, env, heap);
             }
             Expr::PrimitiveOperationExpr(primitive_op, source_location) => {
                 let prim_op = *primitive_op.clone();
@@ -835,7 +943,7 @@ impl Evaluate for Expr {
 }
 
 impl Evaluate for PrimitiveOperation {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>, heap: &mut Heap) {
         match self {
             PrimitiveOperation::UnaryOperation { operator, operand } => {
                 let un_operator = UnOp {
@@ -864,7 +972,7 @@ impl Evaluate for PrimitiveOperation {
 }
 
 impl Evaluate for Literal {
-    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>) {
+    fn evaluate(&self, instr_stack: &mut Vec<AgendaInstrs>, stash: &mut Vec<Literal>, env: &mut Box<Environment>, heap: &mut Heap) {
         match self {
             IntLiteral(n) => stash.push(IntLiteral(*n)), // Need to  extract the literal when using it
             BoolLiteral(b) => stash.push(BoolLiteral(*b)),
@@ -872,6 +980,10 @@ impl Evaluate for Literal {
                 stash.push(StringLiteral(s.clone()));
             },
             UnitLiteral => { stash.push(UnitLiteral) },
+            StringRefLiteral(srf) => {
+                stash.push(StringRefLiteral(srf.clone()));
+            },
+            MovedLiteral => { stash.push(MovedLiteral)},
             _ => panic!("This literal type is not supported!")
         }
     }

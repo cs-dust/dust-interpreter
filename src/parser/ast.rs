@@ -29,12 +29,22 @@ pub enum DataType {
     Func(Vec<LifetimeParameter>, Vec<DataType>, Box<DataType>)
 }
 
+
+#[derive(Debug, Clone)]
+pub struct StringRef {
+    pub value: String,
+    pub addr: usize,
+    pub nam: String
+}
+
 #[derive(Debug, Clone)]
 pub enum Literal {
     IntLiteral(i64),
     BoolLiteral(bool),
     StringLiteral(String),
-    UnitLiteral
+    UnitLiteral,
+    StringRefLiteral(StringRef),
+    MovedLiteral
 }
 
 #[derive(Debug, Clone)]
