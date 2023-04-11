@@ -1,3 +1,6 @@
+//This program demonstrates Dust’s support for code blocks and how expressions can be evaluated within these blocks,
+// returning the value of the last expression.
+// Additionally, the program also shows how semicolons can be used to suppress the output of expressions.
 fn main() {
     let x = 5;
 
@@ -14,7 +17,7 @@ fn main() {
         2 * x;
     };
 
-    println("x is {:?}", x);
-    println("y is {:?}", y);
-    println("z is {:?}", z);
+    println("x is ", x);
+    println("y is ", y);
+    println("z is ", z);
 }

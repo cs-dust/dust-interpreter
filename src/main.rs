@@ -8,6 +8,7 @@ use std::env;
 mod parser;
 mod interpreter;
 mod test;
+mod demo;
 
 const DEBUG_MODE: bool = false;
 

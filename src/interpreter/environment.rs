@@ -52,7 +52,7 @@ impl  Environment {
     }
 
     pub fn set_mut(&mut self, name: &str, val: Object) {
-        println!("Searching and setting");
+        //println!("Searching and setting");
         match self.store.get(name) {
             Some(obj) => {
                 self.set(name.to_string(), val);

@@ -508,7 +508,7 @@ impl Evaluate for AgendaInstrs {
             AgendaInstrs::Literal(lit) => lit.evaluate(instr_stack, stash, env, heap),
             AgendaInstrs::Expr(expr) => expr.evaluate(instr_stack, stash, env, heap),
             AgendaInstrs::Environment(ref e) => { // Restore environment
-                println!("Restoring");
+                //println!("Restoring");
                 let with_outer = env.clone();
                 for (_, value) in with_outer.store.iter() {
                     match value {

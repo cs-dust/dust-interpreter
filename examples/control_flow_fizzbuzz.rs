@@ -1,3 +1,6 @@
+// This program demonstrates Dust's support for loops and conditional statements.
+// It also shows how variables can be declared and reassigned.
+// In our system, all variables are mutable by default, something that is different from Rust.
 fn main() {
     // A counter variable
     let mut n = 1;
