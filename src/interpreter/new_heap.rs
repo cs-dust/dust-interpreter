@@ -90,6 +90,7 @@ impl Heap {
             }
         }
         self.free_pointer = curr_ptr;
+        self.free_space -= string.len() + 1;
         return header_ptr;
     }
 
@@ -197,15 +198,16 @@ impl Heap {
             let node_at_b = self.get_node_from_addr(node_b_next);
             let b_payload = Heap::get_data_payload(node_at_b);
             node_b_next = Heap::get_next_node(node_at_b);
-            let new_node = Heap::create_data_node(b_payload, new_str_len, node_b_next);
+            let tmp = Heap::get_next_node(node_at_a);
+            let new_node = Heap::create_data_node(b_payload, new_str_len, tmp);
             self.heap[self.free_pointer] = new_node;
-            self.free_pointer = Heap::get_next_node(node_at_a);
-            self.free_pointer = node_b_next;
+            self.free_pointer = tmp;
             if new_str_len == 0 {
                 break;
             }
             new_str_len -= 1;
         }
+        self.free_space -= str_b_len as usize + 1;
         return addr_a;
     }
 
