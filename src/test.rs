@@ -39,7 +39,7 @@ fn test_primitive_values() {
     let source = fs::read_to_string("examples/primitive_value_example.rs").expect("Unable to read file");
     println!("Parsing...\n");
     let mut ast = parser::parse(&source).expect("Failed to parse given program");
-    interpreter::run(&mut ast);
+    interpreter::run(&mut ast, DEBUG_MODE);
 }
 
 
@@ -91,7 +91,7 @@ fn test_block_expression_with_primitive_op() {
     let source = fs::read_to_string("examples/block_expression_primitive_op.rs").expect("Unable to read file");
     println!("Parsing...\n");
     let mut ast = parser::parse(&source).expect("Failed to parse given program");
-    interpreter::run(&mut ast);
+    interpreter::run(&mut ast, DEBUG_MODE);
 }
 
 #[test]
@@ -123,7 +123,7 @@ fn test_function_return_nested_vs_normal() {
     let source = fs::read_to_string("examples/function_application_nested_vs_normal.rs").expect("Unable to read file");
     println!("Parsing...\n");
     let mut ast = parser::parse(&source).expect("Failed to parse given program");
-    interpreter::run(&mut ast);
+    interpreter::run(&mut ast, DEBUG_MODE);
 }
 
 #[test]
@@ -166,7 +166,7 @@ fn test_control_flow_fizzbuzz() {
     let source = fs::read_to_string("examples/control_flow_fizzbuzz.rs").expect("Unable to read file");
     println!("Parsing...\n");
     let mut ast = parser::parse(&source).expect("Failed to parse given program");
-    interpreter::run(&mut ast);
+    interpreter::run(&mut ast, DEBUG_MODE);
 }
 
 #[test]

@@ -270,7 +270,7 @@ impl Heap {
 
 #[test]
 fn check_heap_integer() {
-    let mut heap = Heap::new();
+    let mut heap = Heap::new(false);
     heap.clear_heap();
     let ptr = heap.push_integer(35);
     let value = heap.get_integer(ptr);
@@ -279,7 +279,7 @@ fn check_heap_integer() {
 
 #[test]
 fn check_heap_bool() {
-    let mut heap = Heap::new();
+    let mut heap = Heap::new(false);
     heap.clear_heap();
     let ptr = heap.push_boolean(true);
     let value = heap.get_boolean(ptr);
@@ -288,7 +288,7 @@ fn check_heap_bool() {
 
 #[test]
 fn check_push() {
-    let mut heap = Heap::new();
+    let mut heap = Heap::new(false);
     heap.clear_heap();
     let int_ptr_1 = heap.heap_push(Literal::IntLiteral(69));
     let bool_ptr_1 = heap.heap_push(Literal::BoolLiteral(false));
@@ -324,7 +324,7 @@ fn check_push() {
 
 #[test]
 fn check_heap_resize() {
-    let mut heap = Heap::new();
+    let mut heap = Heap::new(false);
     heap.clear_heap();
     for i in 1..HEAP_INIT_SIZE * 4 {
         let ptr = heap.push_integer(i as u64);
@@ -337,7 +337,7 @@ fn check_heap_resize() {
 
 #[test]
 fn check_concat() {
-    let mut heap = Heap::new();
+    let mut heap = Heap::new(false);
     heap.clear_heap();
     let string_a_ptr = heap.push_string(String::from("cyka"));
     let string_b_ptr = heap.push_string(String::from(" blyat"));
@@ -355,7 +355,7 @@ fn check_concat() {
 
 #[test]
 fn check_free() {
-    let mut heap = Heap::new();
+    let mut heap = Heap::new(false);
     heap.clear_heap();
     let ptr1 = heap.push_integer(10);
     let ptr2 = heap.push_integer(20);
