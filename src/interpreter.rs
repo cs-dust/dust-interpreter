@@ -282,7 +282,7 @@ pub fn apply_binop(x: Option<Literal>, y: Option<Literal>, sym: BinaryOperator, 
                         Literal::StringLiteral(s) => s,
                         _ => panic!("How did a string concat to this?")
                     };
-                    //heap.free_space(y_str_addr); // Clear y, not used again TODO: Fix
+                    heap.free_space(y_str_addr); // Clear y, not used again TODO: Fix
                     let new_str = StringRef {
                         value: concat_str,
                         addr: concat_str_addr,
