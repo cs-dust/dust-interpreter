@@ -44,6 +44,7 @@ dependencies = [
  "pest",
  "pest_consume",
  "pest_derive",
+ "truthy",
  "walkdir",
 ]
 
@@ -219,6 +220,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "truthy"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6ebd0f1df298ffd07878d07ccb7fe00a587c42343de8a0b760d5f0cc65f9422"
 
 [[package]]
 name = "typenum"

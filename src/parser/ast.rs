@@ -29,13 +29,22 @@ pub enum DataType {
     Func(Vec<LifetimeParameter>, Vec<DataType>, Box<DataType>)
 }
 
+
+#[derive(Debug, Clone)]
+pub struct StringRef {
+    pub value: String,
+    pub addr: usize,
+    pub nam: String
+}
+
 #[derive(Debug, Clone)]
 pub enum Literal {
     IntLiteral(i64),
     BoolLiteral(bool),
     StringLiteral(String),
     UnitLiteral,
-    UndefinedLiteral
+    StringRefLiteral(StringRef),
+    MovedLiteral
 }
 
 #[derive(Debug, Clone)]
@@ -177,6 +186,24 @@ pub enum Stmt {
         position: SourceLocation,
     },
     ExprStmt(Expr),
+    IfElseStmt {
+        pred: Expr,
+        cons: Expr,
+        alt: Option<Expr>,     // add optional block for alt
+        position: SourceLocation,
+    },
+    ForLoopStmt {
+        init: Expr,
+        pred: Expr,
+        update: Expr,
+        body: Expr,
+        position: SourceLocation,
+    },
+    WhileLoopStmt {
+        pred: Expr,
+        body: Expr,
+        position: SourceLocation,
+    }
 }
 
 impl AST for Stmt {
@@ -186,6 +213,9 @@ impl AST for Stmt {
             Stmt::StaticStmt { position, .. } => position.clone(),
             Stmt::FuncDeclaration { position, .. } => position.clone(),
             Stmt::ExprStmt(expr) => expr.get_source_location(),
+            Stmt::IfElseStmt { position, .. } => position.clone(),
+            Stmt::ForLoopStmt { position, .. } => position.clone(),
+            Stmt::WhileLoopStmt { position, .. } => position.clone(),
         }
     }
 }

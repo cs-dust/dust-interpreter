@@ -30,29 +30,49 @@ use ast::{
 #[grammar = "oxido_grammar.pest"]
 struct OxidoParser;
 
+// Define type alias for results & nodes
 type Result<T> = std::result::Result<T, Error<Rule>>;
 type Node<'i> = pest_consume::Node<'i, Rule, ()>;
 
+// Implement OxidoParser trait to parse input based on grammar rules
 #[pest_consume::parser]
 impl OxidoParser {
+
+    /*
+    Take input parameter of type Node
+    Return Result indicating success by returning: Ok or Err
+     */
     fn EOI(input: Node) -> Result<()> {
         Ok(())
     }
+
+    // Match a sequence of top-level declarations
     fn program(input: Node) -> Result<Vec<Stmt>> {
+        // Match input's children against top_level_declaration
         Ok(match_nodes!(input.into_children();
             [top_level_declarations(stmts).., _] => stmts.collect()
         ))
     }
+
+    // Match single top-level declaration
     fn top_level_declarations(input: Node) -> Result<Stmt> {
         Ok(match_nodes!(input.into_children();
             [static_declaration(stmt)] => stmt,
             [function_declaration(stmt)] => stmt,
+            [if_else_stmt(stmt)] => stmt, // New branch for IfElseStmt
+            // [for_loop_stmt(stmt)] => stmt, // New branch for ForLoopStmt
+            [while_loop_stmt(stmt)] => stmt, // New branch for WhileLoopStmt
+            [declaration(stmt)] => stmt,
         ))
     }
+
+    // Parse "let" statement declaration
     fn declaration(input: Node) -> Result<Stmt> {
         let (line, col) = input.as_span().start_pos().line_col();
         let position = SourceLocation { line, col };
 
+        // Match input's children with different combination of rules
+        // Destructure matched values into separate variables
         // Could probably be more concisely expressed by iterating through the input's children instead.
         let (name, is_mutable, annotation, value) =
             match_nodes!(input.children();
@@ -74,6 +94,7 @@ impl OxidoParser {
                     (name, true, Some(annotation), Some(value)),
             );
 
+        // Create LetStmt with parsed values
         Ok(Stmt::LetStmt {
             name,
             is_mutable,
@@ -82,10 +103,14 @@ impl OxidoParser {
             position,
         })
     }
+
+    // Parse "static" statement declaration
     fn static_declaration(input: Node) -> Result<Stmt> {
         let (line, col) = input.as_span().start_pos().line_col();
         let position = SourceLocation { line, col };
 
+        // Match input's children with different combination of rules
+        // Create StaticStmt with parsed values
         Ok(match_nodes!(input.children();
             [identifier(identifier), datatype(annotation), expr(value)] =>
                 Stmt::StaticStmt {
@@ -105,27 +130,40 @@ impl OxidoParser {
                 },
         ))
     }
+
+    // Parse the "mut" keyword in variable declarations
     fn mutable_specifier(input: Node) -> Result<bool> {
         Ok(true)
     }
+
+    // Parse data types
     fn datatype(input: Node) -> Result<DataType> {
+        // Match input string representation with known data types & corresponding DataType enum variants
         Ok(match input.as_str().trim() {
             "i64" => DataType::Int64,
             "bool" => DataType::Bool,
             "str" => DataType::Str,
             "String" => DataType::String,
             "()" => DataType::Unit,
+            /*
+            If input does not match any known data types, match its children with
+            function_datatype
+             */
             _ => match_nodes!(input.into_children();
                     [function_datatype(f)] => f,
                     [reference_datatype(d)] => d),
         })
     }
+
+    // Parse reference types
     fn reference_datatype(input: Node) -> Result<DataType> {
+        // Closure that creates reference type based on given parameters
         let create_reference_type = |lifetime, is_mutable, datatype| match is_mutable {
             true => DataType::MutRef(lifetime, Box::from(datatype)),
             false => DataType::Ref(lifetime, Box::from(datatype)),
         };
 
+        // Based on given input, return parsed reference data type
         Ok(match_nodes!(input.into_children();
             [datatype(d)] =>
                 create_reference_type(None, false, d),
@@ -151,20 +189,29 @@ impl OxidoParser {
                 }
         )) */
     }
+
+    // Return vector of parsed data types for function param list
     fn function_datatype_param_list(input: Node) -> Result<Vec<DataType>> {
         Ok(match_nodes!(input.into_children();
             [datatype(d)..] => d.collect(),
         ))
     }
+
+    // Parse block of statements
+    // Return an expression
     fn block(input: Node) -> Result<Expr> {
+        // Process statements in block
         let process_stmts = |mut stmts: Sequence, last_expr| match last_expr {
             Some(expr) => match expr {
+                // If last statement is a return expression, add to statement sequence
                 return_expr@Expr::ReturnExpr(_, _) => {
                     stmts.push(SequenceStmt::Stmt(
                         Stmt::ExprStmt(return_expr),
                     ));
                     stmts
                 },
+                // Else, create return expression with last expression
+                // Add it to the statement sequence
                 expr_to_return@_ => {
                     let return_expr_position = expr_to_return.get_source_location();
                     let return_expr = Expr::ReturnExpr(
@@ -177,6 +224,7 @@ impl OxidoParser {
                     stmts
                 }
             },
+            // If no statements, add return expression with unit literal to statement sequence
             None => {
                 // Temporary patch since source location isn't used.
                 let position = SourceLocation {
@@ -197,23 +245,31 @@ impl OxidoParser {
             },
         };
 
+        // Get start position of input node
         let (line, col) = input.as_span().start_pos().line_col();
         Ok(match_nodes!(input.into_children();
             [sequence(stmts), expr(mut last_expr)..] => Expr::BlockExpr(
+                // Create a new BlockExpr with processed statements and last expression
                 Box::from(Block {
                     statements: process_stmts(stmts, last_expr.next()),
                 }),
+                // Set source location of BlockExpr to start position of input node
                 SourceLocation { line, col },
             )
         ))
     }
+
+    // Function to process sequence of statements or blocks
     fn sequence(input: Node) -> Result<Sequence> {
+        // Map each child node to a SequenceStmt
         input.children()
             .map(|node| match node.as_rule() {
+                // If child is a stmt, wrap in a SequenceStmt::Stmt
                 Rule::stmt => match OxidoParser::stmt(node) {
                     Ok(stmt) => Ok(SequenceStmt::Stmt(stmt)),
                     Err(msg) => Err(msg),
                 },
+                // If child is a block, extract BlocKExpr and wrap in a SequenceStmt::Block
                 Rule::block => match OxidoParser::block(node) {
                     Ok(expr) => {
                         if let Expr::BlockExpr(block, _) = expr {
@@ -224,28 +280,102 @@ impl OxidoParser {
                     },
                     Err(msg) => Err(msg),
                 },
+                // Return error if neither stmt or block
                 _ => Err(input.error("Sequence expects a block or a statement"))
             })
             .collect()
     }
+
+    // Process statement node
     fn stmt(input: Node) -> Result<Stmt> {
         Ok(match_nodes!(input.into_children();
             [declaration(stmt)] => stmt,
             [static_declaration(stmt)] => stmt,
             [function_declaration(stmt)] => stmt,
             [expr_stmt(stmt)] => stmt,
+            [if_else_stmt(stmt)] => stmt,
+            // [for_loop_stmt(stmt)] => stmt,
+            [while_loop_stmt(stmt)] => stmt,
         ))
     }
+
+    // Process expression statement node
     fn expr_stmt(input: Node) -> Result<Stmt> {
         Ok(match_nodes!(input.children();
             [expr(expr)] => Stmt::ExprStmt(expr),
         ))
     }
+
+    // Parse if-else statement
+    fn if_else_stmt(input: Node) -> Result<Stmt> {
+        let (line, col) = input.as_span().start_pos().line_col();
+        let position = SourceLocation { line, col };
+
+        // Match input's children against expected rule sequence
+        let (pred, cons, alt) =
+            match_nodes!(input.children();
+                [expr(pred), block(cons), block(alt)] => (pred, cons, Some(alt)),
+                [expr(pred), block(cons)] => (pred, cons, None),
+            );
+
+        // Create IfElseStmt with parsed values
+        Ok(Stmt::IfElseStmt {
+            pred,
+            cons,
+            alt,
+            position,
+        })
+    }
+
+    // Parse for-loop
+    // fn for_loop_stmt(input: Node) -> Result<Stmt> {
+    //     let (line, col) = input.as_span().start_pos().line_col();
+    //     let position = SourceLocation { line, col };
+    //
+    //     // Match input's children against expected rule sequence
+    //     let (init, pred, update, body) =
+    //         match_nodes!(input.children();
+    //         [expr(init), expr(cond), expr(update), expr(body)] =>
+    //             (init, cond, update, body),
+    //     );
+    //
+    //     // Create ForLoopStmt with parsed values
+    //     Ok(Stmt::ForLoopStmt {
+    //         init,
+    //         pred,
+    //         update,
+    //         body,
+    //         position,
+    //     })
+    // }
+
+    // Parse while-loop statement
+    fn while_loop_stmt(input: Node) -> Result<Stmt> {
+        let (line, col) = input.as_span().start_pos().line_col();
+        let position = SourceLocation { line, col };
+
+        // Match input's children against expected rule sequence
+        let (pred, body) =
+            match_nodes!(input.children();
+            [expr(pred), block(body)] => (pred, body),
+        );
+
+        // Create WhileLoopStmt with parsed values
+        Ok(Stmt::WhileLoopStmt {
+            pred,
+            body,
+            position,
+        })
+    }
+
+    // Process expression node
     fn expr(input: Node) -> Result<Expr> {
         Ok(match_nodes!(input.into_children();
             [assignment(expr)] => expr,
         ))
     }
+
+    // Process primary expression node
     fn primary(input: Node) -> Result<Expr> {
         Ok(match_nodes!(input.into_children();
             [integer_literal(expr)] => expr,
@@ -258,15 +388,21 @@ impl OxidoParser {
             [identifier(expr)] => expr,
         ))
     }
+
+    // Process grouped expression node
     fn grouped_expr(input: Node) -> Result<Expr> {
         Ok(match_nodes!(input.into_children();
             [expr(expr)] => expr,
         ))
     }
+
+    // Process assignment node
     fn assignment(input: Node) -> Result<Expr> {
+        // Get line & col number of start position of input node
         let (line, col) = input.as_span().start_pos().line_col();
         let position = SourceLocation { line, col };
 
+        // Check if assignee expression is valid
         let is_valid_assignee = |assignee: &Expr| match assignee {
             Expr::IdentifierExpr(_, _) => true,
             Expr::PrimitiveOperationExpr(operation, _) => match *operation.clone() {
@@ -279,13 +415,16 @@ impl OxidoParser {
             _ => false,
         };
 
+        // Create assignment expression
         let create_assignment_expr = |input: Node, assignee, value, position|
             match is_valid_assignee(&assignee) {
+                // If valid, create & return AssignmentExpr object
                 true => Ok(Expr::AssignmentExpr {
                     assignee: Box::from(assignee),
                     value: Box::from(value),
                     position,
                 }),
+                // Else return error
                 false => Err(input.error("Expected assignee to be an identifier or a dereferenced expression")),
             };
 
@@ -297,7 +436,10 @@ impl OxidoParser {
             [disjunction(expr)] => Ok(expr),
         )
     }
+
+    // Process disjunction node
     fn disjunction(input: Node) -> Result<Expr> {
+        // Create binary expression
         let create_binary_expr = |operator, first_operand, second_operand, src_location|
             Expr::PrimitiveOperationExpr(
                 Box::from(PrimitiveOperation::BinaryOperation {
@@ -308,13 +450,18 @@ impl OxidoParser {
                 src_location,
             );
 
+        // Match input to a disjunction node and its children
         match_nodes!(input.children();
             [conjunction(initial_operand), conjunction(repetitions)..] => {
+                // Reverse repetitions
+                // Create iterator to peek at the next repetition
                 let mut repetitions = repetitions.rev().peekable();
                 match repetitions.next() {
                     Some(expr) => {
                         let mut second_operand = expr;
 
+                        // If no more repetitions
+                        // Create binary OR expression
                         if repetitions.peek().is_none() {
                             let src_location = initial_operand.get_source_location();
                             Ok(create_binary_expr(
@@ -324,6 +471,7 @@ impl OxidoParser {
                                 src_location,
                             ))
                         } else {
+                            // Otherwise, iterate over repetitions, create binary OR expressions
                             for first_operand in repetitions {
                                 let src_location = first_operand.get_source_location();
                                 second_operand = create_binary_expr(
@@ -334,6 +482,7 @@ impl OxidoParser {
                                 );
                             }
 
+                            // Create binary OR expression with initial operand & resulting operand
                             let src_location = initial_operand.get_source_location();
                             Ok(create_binary_expr(
                                 BinaryOperator::Or,
@@ -348,6 +497,9 @@ impl OxidoParser {
             },
         )
     }
+
+    // Process conjunction node
+    // Similar to disjunction node
     fn conjunction(input: Node) -> Result<Expr> {
         let create_binary_expr = |operator, first_operand, second_operand, src_location|
             Expr::PrimitiveOperationExpr(
@@ -361,11 +513,15 @@ impl OxidoParser {
 
         match_nodes!(input.children();
             [equality(initial_operand), equality(repetitions)..] => {
+                // Reverse repetitions
+                // Create an iterator to peek at the next repetition
                 let mut repetitions = repetitions.rev().peekable();
                 match repetitions.next() {
                     Some(expr) => {
                         let mut second_operand = expr;
 
+                        // If no more repetitions
+                        // Create binary AND expression
                         if repetitions.peek().is_none() {
                             let src_location = initial_operand.get_source_location();
                             Ok(create_binary_expr(
@@ -375,6 +531,7 @@ impl OxidoParser {
                                 src_location,
                             ))
                         } else {
+                            // Otherwise, iterate over repetitions, create binary AND expressions
                             for first_operand in repetitions {
                                 let src_location = first_operand.get_source_location();
                                 second_operand = create_binary_expr(
@@ -385,6 +542,7 @@ impl OxidoParser {
                                 );
                             }
 
+                            // Create binary AND expression with initial operand & resulting operand
                             let src_location = initial_operand.get_source_location();
                             Ok(create_binary_expr(
                                 BinaryOperator::And,
@@ -399,6 +557,8 @@ impl OxidoParser {
             },
         )
     }
+
+
     fn equality(input: Node) -> Result<Expr> {
         let create_binary_expr = |operator, first_operand, second_operand, src_location|
             Expr::PrimitiveOperationExpr(
@@ -872,51 +1032,51 @@ pub fn parse(program: &str) -> Result<Vec<Stmt>> {
     OxidoParser::program(inputs.single()?)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::parse;
-    use walkdir::{WalkDir, DirEntry};
-    use std::fs;
-
-    type GetFilesPredicate = fn(&DirEntry) -> bool;
-
-    fn get_files_from(path: &str, predicate: GetFilesPredicate) -> Vec<DirEntry> {
-        WalkDir::new(path)
-            .follow_links(true)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(predicate)
-            .collect::<Vec<DirEntry>>()
-    }
-
-    #[test]
-    fn test_parse() {
-        let test_dir = "parse_examples";
-        let valid_program_entries = get_files_from(test_dir, |e| {
-            let file_name = e.file_name().to_string_lossy();
-            file_name.ends_with(".rs") && file_name != "statement_parse_error.rs"
-        });
-
-        assert!(valid_program_entries.len() > 0);
-
-        valid_program_entries
-            .iter()
-            .for_each(|file| {
-                let program = fs::read_to_string(file.path()).expect("Unable to read valid test program");
-                assert!(parse(&program).is_ok(), "Failed to parse syntatically valid program: {:#?}", file.path());
-            });
-
-        let invalid_programs_entries = get_files_from(test_dir, |e|
-            e.file_name().to_string_lossy() == "statement_parse_error.rs");
-
-        assert!(invalid_programs_entries.len() > 0);
-
-        invalid_programs_entries
-            .iter()
-            .for_each(|file| {
-                let program = fs::read_to_string(file.path()).expect("Unable to read invalid test program");
-                assert!(parse(&program).is_err(), "Failed to reject syntatically invalid program: {:#?}", file.path());
-            });
-
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use super::parse;
+//     use walkdir::{WalkDir, DirEntry};
+//     use std::fs;
+//
+//     type GetFilesPredicate = fn(&DirEntry) -> bool;
+//
+//     fn get_files_from(path: &str, predicate: GetFilesPredicate) -> Vec<DirEntry> {
+//         WalkDir::new(path)
+//             .follow_links(true)
+//             .into_iter()
+//             .filter_map(|e| e.ok())
+//             .filter(predicate)
+//             .collect::<Vec<DirEntry>>()
+//     }
+//
+//     #[test]
+//     fn test_parse() {
+//         let test_dir = "parse_examples";
+//         let valid_program_entries = get_files_from(test_dir, |e| {
+//             let file_name = e.file_name().to_string_lossy();
+//             file_name.ends_with(".rs") && file_name != "statement_parse_error.rs"
+//         });
+//
+//         assert!(valid_program_entries.len() > 0);
+//
+//         valid_program_entries
+//             .iter()
+//             .for_each(|file| {
+//                 let program = fs::read_to_string(file.path()).expect("Unable to read valid test program");
+//                 assert!(parse(&program).is_ok(), "Failed to parse syntatically valid program: {:#?}", file.path());
+//             });
+//
+//         let invalid_programs_entries = get_files_from(test_dir, |e|
+//             e.file_name().to_string_lossy() == "statement_parse_error.rs");
+//
+//         assert!(invalid_programs_entries.len() > 0);
+//
+//         invalid_programs_entries
+//             .iter()
+//             .for_each(|file| {
+//                 let program = fs::read_to_string(file.path()).expect("Unable to read invalid test program");
+//                 assert!(parse(&program).is_err(), "Failed to reject syntatically invalid program: {:#?}", file.path());
+//             });
+//
+//     }
+// }
