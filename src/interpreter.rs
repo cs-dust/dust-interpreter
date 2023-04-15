@@ -580,12 +580,16 @@ impl Evaluate for AgendaInstrs {
                 for (_, value) in with_outer.store.iter() {
                     match value {
                         Object::PtrToLiteral(addr) => {
-                            println!("---heap before---");
-                            heap.print_stats();
+                            if debug {
+                                println!("---heap before---");
+                                heap.print_stats();
+                            }
                             heap.free_space(*addr);
-                            println!("---heap after---");
-                            heap.print_stats();
-                            println!("----------------");
+                            if debug {
+                                println!("---heap after---");
+                                heap.print_stats();
+                                println!("----------------");
+                            }
                         }
                         _ => {}
                     };
