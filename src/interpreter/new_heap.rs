@@ -64,7 +64,10 @@ impl Heap {
         }
         self.free_space += self.size;
         self.size *= 2;
-        println!("new heap size: {}", self.heap.len());
+        if self.debug{
+            println!("Expanded heap. ");
+            println!("New heap size: {}", self.heap.len());
+        }
     }
 
     fn push_string(&mut self, string: String) -> usize {
@@ -94,6 +97,9 @@ impl Heap {
         }
         self.free_pointer = curr_ptr;
         self.free_space -= string.len() + 1;
+        if self.debug {
+            println!("Pushed string {} to address {}", &string, header_ptr);
+        }
         return header_ptr;
     }
 
@@ -114,9 +120,16 @@ impl Heap {
         self.free_pointer = new_free_pointer;
         self.free_space -= 2;
 
+        if self.debug {
+            println!("Pushed integer {} to address {}", integer, first_node_addr);
+        }
+
         return first_node_addr;
     }
     fn push_boolean(&self, boolean: bool) -> usize {
+        if self.debug {
+            println!("Pushed boolean {}", boolean);
+        }
         return if boolean { 1 } else { 0 };
     }
     fn get_string(&self, addr: usize) -> String {
@@ -142,21 +155,12 @@ impl Heap {
     pub fn heap_push(&mut self, literal: Literal) -> usize {
         return match literal {
             Literal::StringLiteral(string) => {
-                if self.debug {
-                    println!("Pushed string {}", string);
-                }
                 self.push_string(string)
             },
             Literal::IntLiteral(integer) => {
-                if self.debug {
-                    println!("Pushed int {}", integer);
-                }
                 self.push_integer(integer as u64)
             },
             Literal::BoolLiteral(boolean) => {
-                if self.debug {
-                    println!("Pushed boolean {}", boolean);
-                }
                 self.push_boolean(boolean)
             },
             Literal::UnitLiteral => 2,
@@ -217,6 +221,9 @@ impl Heap {
             new_str_len -= 1;
         }
         self.free_space -= str_b_len as usize + 1;
+        if self.debug {
+            println!("Concatenated address {} with address {}", addr_a, addr_b);
+        }
         return addr_a;
     }
 
@@ -235,6 +242,9 @@ impl Heap {
         self.heap[ptr] = new_node;
         self.free_space += data_length as usize + 1;
         self.free_pointer = addr;
+        if self.debug {
+            println!("Freeing {} nodes at address {}", data_length + 1, addr);
+        }
     }
     pub fn new(debug_or_not: bool) -> Heap {
         return Heap {
