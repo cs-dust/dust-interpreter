@@ -9,7 +9,7 @@ fn main() {
 }
 
 fn takes_ownership(s: String) {
-    println("Taken ownership of", s);
+    println("Taken ownership of ", s);
 }
 
 fn makes_copy(i: i64) {
