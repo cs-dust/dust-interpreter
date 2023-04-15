@@ -1,12 +1,8 @@
 // Credits: Adapted from https://github.com/Rydgel/monkey-rust/blob/master/lib/evaluator/environment.rs
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 use crate::interpreter::new_heap::Heap;
-use crate::parser;
-use crate::parser::ast::{DataType, Expr, PrimitiveOperation, SequenceStmt, Stmt, Block, Literal, UnaryOperator, BinaryOperator, VariadicOperator, PrimitiveOperator};
-use crate::parser::ast::Literal::{BoolLiteral, IntLiteral, StringLiteral, UnitLiteral};
-use crate::interpreter;
+use crate::parser::ast::{Expr, Stmt, Literal};
+
 
 #[derive(Debug, Clone)]
 pub struct TopLevelMap {
@@ -19,31 +15,34 @@ pub struct TopLevelMap {
 pub struct Environment {
     pub store: HashMap<String, Object>,
     parent: Option<Box<Environment>>,
+    debug: bool
 }
 
 
 // TODO: Replace to accommodate heap address instead
 #[derive(Debug, Clone)]
 pub enum Object {
-    Literal(Literal),
+    // Literal(Literal),
     DeclStatement(Stmt),
     PtrToLiteral(usize)
 }
 
 impl  Environment {
-    pub fn new() -> Self {
-        let mut hashmap = HashMap::new();
+    pub fn new(debug: bool) -> Self {
+        let hashmap = HashMap::new();
         Environment {
             store: hashmap,
-            parent: None
+            parent: None,
+            debug: debug
         }
     }
 
     pub fn extend_environment(outer: Box<Environment>) -> Self {
-        let mut hashmap = HashMap::new();
+        let hashmap = HashMap::new();
         Environment {
             store: hashmap,
-            parent: Some(outer)
+            debug: outer.debug,
+            parent: Some(outer),
         }
     }
 
@@ -52,9 +51,11 @@ impl  Environment {
     }
 
     pub fn set_mut(&mut self, name: &str, val: Object) {
-        println!("Searching and setting");
+        if self.debug{
+            println!("Searching and setting");
+        }
         match self.store.get(name) {
-            Some(obj) => {
+            Some(_obj) => {
                 self.set(name.to_string(), val);
             },
             None => match self.parent {
@@ -88,16 +89,16 @@ impl  Environment {
         while curr_stmt.is_some() {
             let curr: Stmt = curr_stmt.expect("Value");
             match curr.clone() {
-                Stmt::StaticStmt { name, is_mutable, annotation, value, position } => {
+                Stmt::StaticStmt { name, is_mutable: _, annotation: _, value: _, position: _ } => {
                     let static_name: String = match name {
-                        Expr::IdentifierExpr(name_string, sloc) => { name_string }
+                        Expr::IdentifierExpr(name_string, _sloc) => { name_string }
                         _ => panic!("No name?")
                     };
                     self.store.insert(static_name, Object::DeclStatement(curr));
                 }
-                Stmt::FuncDeclaration { name, lifetime_parameters, parameters, return_type, body, position } => {
+                Stmt::FuncDeclaration { name, lifetime_parameters: _, parameters: _, return_type: _, body: _, position: _ } => {
                     let function_name: String = match name {
-                        Expr::IdentifierExpr(name_string, sloc) => {
+                        Expr::IdentifierExpr(name_string, _sloc) => {
                             name_string
                         }
                         _ => panic!("No name??")

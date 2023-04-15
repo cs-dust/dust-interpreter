@@ -16,6 +16,7 @@ const PAYLOAD_OFFSET: u8 = 0;
 const LENGTH_OFFSET: u8 = 64;
 const NEXT_NODE_OFFSET: u8 = 96;
 
+// Heap data structure
 pub struct Heap {
     heap: Vec<u128>,
     free_pointer: usize,
@@ -25,6 +26,7 @@ pub struct Heap {
 }
 
 impl Heap {
+    // Private methods
     fn create_header_node(data_type: u8, data_length: u32, next_node: usize) -> u128 {
         let mut header: u128 = 0;
         header |= (data_type as u128) << DATA_TYPE_OFFSET;
@@ -62,7 +64,10 @@ impl Heap {
         }
         self.free_space += self.size;
         self.size *= 2;
-        println!("new heap size: {}", self.heap.len());
+        if self.debug{
+            println!("Expanded heap. ");
+            println!("New heap size: {}", self.heap.len());
+        }
     }
 
     fn push_string(&mut self, string: String) -> usize {
@@ -92,6 +97,9 @@ impl Heap {
         }
         self.free_pointer = curr_ptr;
         self.free_space -= string.len() + 1;
+        if self.debug {
+            println!("Pushed string {} to address {}", &string, header_ptr);
+        }
         return header_ptr;
     }
 
@@ -112,9 +120,16 @@ impl Heap {
         self.free_pointer = new_free_pointer;
         self.free_space -= 2;
 
+        if self.debug {
+            println!("Pushed integer {} to address {}", integer, first_node_addr);
+        }
+
         return first_node_addr;
     }
     fn push_boolean(&self, boolean: bool) -> usize {
+        if self.debug {
+            println!("Pushed boolean {}", boolean);
+        }
         return if boolean { 1 } else { 0 };
     }
     fn get_string(&self, addr: usize) -> String {
@@ -137,27 +152,15 @@ impl Heap {
         let data_node = self.get_node_from_addr(data_addr);
         return Heap::get_data_payload(data_node);
     }
-    fn get_boolean(&self, addr: usize) -> bool {
-        return addr == 1;
-    }
     pub fn heap_push(&mut self, literal: Literal) -> usize {
         return match literal {
             Literal::StringLiteral(string) => {
-                if self.debug {
-                    println!("Pushed string {}", string);
-                }
                 self.push_string(string)
             },
             Literal::IntLiteral(integer) => {
-                if self.debug {
-                    println!("Pushed int {}", integer);
-                }
                 self.push_integer(integer as u64)
             },
             Literal::BoolLiteral(boolean) => {
-                if self.debug {
-                    println!("Pushed boolean {}", boolean);
-                }
                 self.push_boolean(boolean)
             },
             Literal::UnitLiteral => 2,
@@ -185,6 +188,9 @@ impl Heap {
         let mut node_a_next = Heap::get_next_node(node_a_header);
         let node_b_header = self.get_node_from_addr(addr_b);
         let str_b_len = Heap::get_data_length(node_b_header);
+        while self.free_space < str_b_len as usize {
+            self.expand_heap();
+        }
         let mut new_str_len = str_a_len + str_b_len;
         let new_header = Heap::create_header_node(STRING_TYPE, new_str_len, node_a_next);
         self.heap[addr_a] = new_header;
@@ -215,6 +221,9 @@ impl Heap {
             new_str_len -= 1;
         }
         self.free_space -= str_b_len as usize + 1;
+        if self.debug {
+            println!("Concatenated address {} with address {}", addr_a, addr_b);
+        }
         return addr_a;
     }
 
@@ -233,6 +242,9 @@ impl Heap {
         self.heap[ptr] = new_node;
         self.free_space += data_length as usize + 1;
         self.free_pointer = addr;
+        if self.debug {
+            println!("Freeing {} nodes at address {}", data_length + 1, addr);
+        }
     }
     pub fn new(debug_or_not: bool) -> Heap {
         return Heap {
@@ -281,9 +293,16 @@ fn check_heap_integer() {
 fn check_heap_bool() {
     let mut heap = Heap::new(false);
     heap.clear_heap();
-    let ptr = heap.push_boolean(true);
-    let value = heap.get_boolean(ptr);
-    assert_eq!(value, true);
+    let ptr = heap.heap_push(Literal::BoolLiteral(true));
+    let value = heap.heap_get(ptr);
+    match value {
+        Literal::BoolLiteral(b) => {
+            assert!(b);
+        },
+        _ => {
+            panic!();
+        }
+    }
 }
 
 #[test]
@@ -327,7 +346,7 @@ fn check_heap_resize() {
     let mut heap = Heap::new(false);
     heap.clear_heap();
     for i in 1..HEAP_INIT_SIZE * 4 {
-        let ptr = heap.push_integer(i as u64);
+        let _ = heap.push_integer(i as u64);
     }
     for i in 1..HEAP_INIT_SIZE * 4 {
         let value = heap.get_integer(2 * i + NUM_LITERAL_TYPES - 2);
@@ -358,7 +377,7 @@ fn check_free() {
     let mut heap = Heap::new(false);
     heap.clear_heap();
     let ptr1 = heap.push_integer(10);
-    let ptr2 = heap.push_integer(20);
+    let _ = heap.push_integer(20);
     heap.free_space(ptr1);
     let ptr3 = heap.push_integer(30);
     let val1 = heap.get_integer(ptr1);
