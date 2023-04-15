@@ -137,9 +137,6 @@ impl Heap {
         let data_node = self.get_node_from_addr(data_addr);
         return Heap::get_data_payload(data_node);
     }
-    fn get_boolean(&self, addr: usize) -> bool {
-        return addr == 1;
-    }
     pub fn heap_push(&mut self, literal: Literal) -> usize {
         return match literal {
             Literal::StringLiteral(string) => {
@@ -281,9 +278,16 @@ fn check_heap_integer() {
 fn check_heap_bool() {
     let mut heap = Heap::new(false);
     heap.clear_heap();
-    let ptr = heap.push_boolean(true);
-    let value = heap.get_boolean(ptr);
-    assert_eq!(value, true);
+    let ptr = heap.heap_push(Literal::BoolLiteral(true));
+    let value = heap.heap_get(ptr);
+    match value {
+        Literal::BoolLiteral(b) => {
+            assert!(b);
+        },
+        _ => {
+            panic!();
+        }
+    }
 }
 
 #[test]
@@ -327,7 +331,7 @@ fn check_heap_resize() {
     let mut heap = Heap::new(false);
     heap.clear_heap();
     for i in 1..HEAP_INIT_SIZE * 4 {
-        let ptr = heap.push_integer(i as u64);
+        let _ = heap.push_integer(i as u64);
     }
     for i in 1..HEAP_INIT_SIZE * 4 {
         let value = heap.get_integer(2 * i + NUM_LITERAL_TYPES - 2);
@@ -358,7 +362,7 @@ fn check_free() {
     let mut heap = Heap::new(false);
     heap.clear_heap();
     let ptr1 = heap.push_integer(10);
-    let ptr2 = heap.push_integer(20);
+    let _ = heap.push_integer(20);
     heap.free_space(ptr1);
     let ptr3 = heap.push_integer(30);
     let val1 = heap.get_integer(ptr1);

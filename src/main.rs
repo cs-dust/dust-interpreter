@@ -1,9 +1,7 @@
 extern crate core;
 
 use std::fs;
-use std::path;
 use std::process;
-use std::env;
 
 mod parser;
 mod interpreter;
@@ -12,7 +10,6 @@ mod test;
 const DEBUG_MODE: bool = false;
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
     let paths = fs::read_dir("examples/").unwrap();
     for path in paths {
         let source = fs::read_to_string(path.unwrap().path()).expect("Unable to read file");
