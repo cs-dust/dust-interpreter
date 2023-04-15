@@ -185,12 +185,14 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>, debug: bool) {
     // main function is called "main", we use this index to know where to start execution
     let main_idx: usize = functions.map.get("main").expect("No main found!").clone();
 
-    println!("{} function(s) have been declared", functions.idx);
-    println!("main function index: {}", main_idx);
+    if debug {
+        println!("{} function(s) have been declared", functions.idx);
+        println!("main function index: {}", main_idx);
+    }
 
     let mut agenda: Vec<AgendaInstrs> = Vec::new(); // A is our stack of instructions as in the Source EC evaluator
     let mut stash: Vec<Literal> = Vec::new(); // S is the stash of evaluated values
-    let mut global_env = Environment::new();
+    let mut global_env = Environment::new(debug);
     global_env.insert_top_level(functions.clone()); // Insert top level declarations into environment
     global_env.insert_top_level(statics.clone());
     let mut environment = Box::new(global_env);
@@ -200,8 +202,9 @@ pub fn run(ast: &mut Vec<parser::ast::Stmt>, debug: bool) {
                                                                        // TODO: Check if we should have a step limit
     while !agenda.is_empty() {
         let curr: AgendaInstrs = agenda.pop().expect("Literally impossible but ok");
-        curr.evaluate(&mut agenda, &mut stash, &mut environment, &mut heap); // Borrowing w/ Mutable Reference
-                                                                             //println!("{:#?}", curr.clone());
+        curr.evaluate(&mut agenda, &mut stash, &mut environment, &mut heap, debug);
+        // Borrowing w/ Mutable Reference
+        //println!("{:#?}", curr.clone());
     }
     if stash.is_empty() || stash.len() > 1 {
         println!("Stash is empty!");
@@ -545,6 +548,7 @@ trait Evaluate {
         stash: &mut Vec<Literal>,
         env: &mut Box<Environment>,
         heap: &mut Heap,
+        debug: bool,
     );
 }
 
@@ -555,20 +559,23 @@ impl Evaluate for AgendaInstrs {
         stash: &mut Vec<Literal>,
         env: &mut Box<Environment>,
         heap: &mut Heap,
+        debug: bool,
     ) {
         // let instr_ptr = instr_stack.len();
         match self {
-            AgendaInstrs::Stmt(stmt) => stmt.evaluate(instr_stack, stash, env, heap),
+            AgendaInstrs::Stmt(stmt) => stmt.evaluate(instr_stack, stash, env, heap, debug),
             // AgendaInstrs::SequenceStmt(stmts) => stmts.evaluate(instr_stack, stash),
             AgendaInstrs::PrimitiveOperation(prim_op) => {
-                prim_op.evaluate(instr_stack, stash, env, heap)
+                prim_op.evaluate(instr_stack, stash, env, heap, debug)
             }
-            AgendaInstrs::Block(blk) => blk.evaluate(instr_stack, stash, env, heap),
-            AgendaInstrs::Literal(lit) => lit.evaluate(instr_stack, stash, env, heap),
-            AgendaInstrs::Expr(expr) => expr.evaluate(instr_stack, stash, env, heap),
+            AgendaInstrs::Block(blk) => blk.evaluate(instr_stack, stash, env, heap, debug),
+            AgendaInstrs::Literal(lit) => lit.evaluate(instr_stack, stash, env, heap, debug),
+            AgendaInstrs::Expr(expr) => expr.evaluate(instr_stack, stash, env, heap, debug),
             AgendaInstrs::Environment(ref _e) => {
                 // Restore environment
-                println!("Restoring");
+                if debug {
+                    println!("Restoring");
+                }
                 let with_outer = env.clone();
                 for (_, value) in with_outer.store.iter() {
                     match value {
@@ -809,8 +816,7 @@ impl Evaluate for AgendaInstrs {
                         }
                     }
                 }
-            }
-            // _ => println!("Agenda is empty"),
+            } // _ => println!("Agenda is empty"),
         }
     }
 }
@@ -822,6 +828,7 @@ impl Evaluate for Stmt {
         _stash: &mut Vec<Literal>,
         _env: &mut Box<Environment>,
         _heap: &mut Heap,
+        debug: bool,
     ) {
         match self {
             Stmt::LetStmt {
@@ -887,7 +894,9 @@ impl Evaluate for Stmt {
                 body,
                 position: _,
             } => {
-                println!("in while loop");
+                if debug {
+                    println!("in while loop");
+                }
                 // Create new Loop_i instruction with cloned body expressions
                 let lp = LoopI {
                     pred: pred.clone(),
@@ -916,6 +925,7 @@ impl Evaluate for Block {
         _stash: &mut Vec<Literal>,
         env: &mut Box<Environment>,
         heap: &mut Heap,
+        _debug: bool,
     ) {
         let outer = env.clone();
         let old_env = env.clone();
@@ -944,6 +954,7 @@ impl Evaluate for Expr {
         stash: &mut Vec<Literal>,
         env: &mut Box<Environment>,
         heap: &mut Heap,
+        debug: bool,
     ) {
         match self {
             Expr::IdentifierExpr(name, _source_location) => {
@@ -982,11 +993,11 @@ impl Evaluate for Expr {
                 }
             }
             Expr::LiteralExpr(literal_value, _source_location) => {
-                literal_value.evaluate(instr_stack, stash, env, heap);
+                literal_value.evaluate(instr_stack, stash, env, heap, debug);
             }
             Expr::BlockExpr(block, _source_location) => {
                 // Block expr need to have a return stmt
-                block.evaluate(instr_stack, stash, env, heap);
+                block.evaluate(instr_stack, stash, env, heap, debug);
             }
             Expr::PrimitiveOperationExpr(primitive_op, _source_location) => {
                 let prim_op = *primitive_op.clone();
@@ -995,7 +1006,7 @@ impl Evaluate for Expr {
             Expr::AssignmentExpr {
                 assignee,
                 value,
-                position:_,
+                position: _,
             } => {
                 let name = get_name(assignee);
                 let expr = *value.clone();
@@ -1076,6 +1087,7 @@ impl Evaluate for PrimitiveOperation {
         _stash: &mut Vec<Literal>,
         _env: &mut Box<Environment>,
         _heap: &mut Heap,
+        _debug: bool,
     ) {
         match self {
             PrimitiveOperation::UnaryOperation { operator, operand } => {
@@ -1102,7 +1114,10 @@ impl Evaluate for PrimitiveOperation {
                 instr_stack.push(AgendaInstrs::Expr(rhs_operand));
                 instr_stack.push(AgendaInstrs::Expr(lhs_operand));
             }
-            PrimitiveOperation::VariadicOperation { operator: _, operands: _ } => {
+            PrimitiveOperation::VariadicOperation {
+                operator: _,
+                operands: _,
+            } => {
                 // TODO
                 //println!("???");
             }
@@ -1117,6 +1132,7 @@ impl Evaluate for Literal {
         stash: &mut Vec<Literal>,
         _env: &mut Box<Environment>,
         _heap: &mut Heap,
+        _debug: bool,
     ) {
         match self {
             IntLiteral(n) => stash.push(IntLiteral(*n)), // Need to  extract the literal when using it

@@ -16,6 +16,7 @@ const PAYLOAD_OFFSET: u8 = 0;
 const LENGTH_OFFSET: u8 = 64;
 const NEXT_NODE_OFFSET: u8 = 96;
 
+// Heap data structure
 pub struct Heap {
     heap: Vec<u128>,
     free_pointer: usize,
@@ -25,6 +26,7 @@ pub struct Heap {
 }
 
 impl Heap {
+    // Private methods
     fn create_header_node(data_type: u8, data_length: u32, next_node: usize) -> u128 {
         let mut header: u128 = 0;
         header |= (data_type as u128) << DATA_TYPE_OFFSET;
@@ -182,6 +184,9 @@ impl Heap {
         let mut node_a_next = Heap::get_next_node(node_a_header);
         let node_b_header = self.get_node_from_addr(addr_b);
         let str_b_len = Heap::get_data_length(node_b_header);
+        while self.free_space < str_b_len as usize {
+            self.expand_heap();
+        }
         let mut new_str_len = str_a_len + str_b_len;
         let new_header = Heap::create_header_node(STRING_TYPE, new_str_len, node_a_next);
         self.heap[addr_a] = new_header;

@@ -15,6 +15,7 @@ pub struct TopLevelMap {
 pub struct Environment {
     pub store: HashMap<String, Object>,
     parent: Option<Box<Environment>>,
+    debug: bool
 }
 
 
@@ -27,11 +28,12 @@ pub enum Object {
 }
 
 impl  Environment {
-    pub fn new() -> Self {
+    pub fn new(debug: bool) -> Self {
         let hashmap = HashMap::new();
         Environment {
             store: hashmap,
-            parent: None
+            parent: None,
+            debug: debug
         }
     }
 
@@ -39,7 +41,8 @@ impl  Environment {
         let hashmap = HashMap::new();
         Environment {
             store: hashmap,
-            parent: Some(outer)
+            debug: outer.debug,
+            parent: Some(outer),
         }
     }
 
@@ -48,7 +51,9 @@ impl  Environment {
     }
 
     pub fn set_mut(&mut self, name: &str, val: Object) {
-        println!("Searching and setting");
+        if self.debug{
+            println!("Searching and setting");
+        }
         match self.store.get(name) {
             Some(_obj) => {
                 self.set(name.to_string(), val);

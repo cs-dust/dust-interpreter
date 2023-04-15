@@ -9,8 +9,6 @@ mod interpreter;
 mod parser;
 mod test;
 
-const DEBUG_MODE: bool = false;
-
 fn main() {
     let args: Vec<String> = env::args().collect();
     let mut path = String::new();
@@ -32,5 +30,15 @@ fn main() {
         );
         process::exit(0);
     }
-    interpreter::run(&mut ast, DEBUG_MODE);
+    println!("Would you like to run the interpreter in debug mode?");
+    println!("Debug mode prints out helpful information about what the interpreter is doing. ");
+    println!("Type y for yes, or anything else for no.");
+    let mut debug = String::new();
+    let _ = io::stdin().read_line(&mut debug).expect("Unable to read stdin");
+    debug = debug.trim().to_string();
+    let mut debug_mode = false;
+    if debug == "y" || debug == "Y" {
+        debug_mode = true;
+    }
+    interpreter::run(&mut ast, debug_mode);
 }
